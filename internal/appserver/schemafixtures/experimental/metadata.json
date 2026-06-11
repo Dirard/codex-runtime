@@ -1,0 +1,10 @@
+{
+  "targetCodexVersion": "codex 0.137.0",
+  "generatorVersion": "codex-app-server-protocol 0.137.0 write_schema_fixtures --experimental",
+  "experimentalFilteringApplied": false,
+  "sourceSchemaSha256": {
+    "ThreadStartParams": "a7fdc1d9e602c5e9d9158fc45e885e7f0814afb24d5016c24cd041202df14560",
+    "ThreadResumeParams": "66be042bf941cb112557b3f6253109ee74b3f4602c4b88fe1c15459ee10fd894",
+    "ThreadResumeResponse": "ec153154a4eb9aca40a71249231811acda6895a101765383f5d5d3b462f9b1f3"
+  }
+}

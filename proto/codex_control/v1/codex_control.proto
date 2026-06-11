@@ -1,0 +1,530 @@
+syntax = "proto3";
+
+package codex.control.v1;
+
+option go_package = "github.com/Dirard/codex-runtime/gen/codex/control/v1;codexcontrolv1";
+
+service CodexControl {
+  rpc StartTask(StartTaskRequest) returns (StartTaskResponse);
+  rpc StreamTask(StreamTaskRequest) returns (stream StreamTaskResponse);
+  rpc RespondPendingRequest(RespondPendingRequestRequest) returns (RespondPendingRequestResponse);
+  rpc InterruptTask(InterruptTaskRequest) returns (InterruptTaskResponse);
+  rpc GetTaskStatus(GetTaskStatusRequest) returns (GetTaskStatusResponse);
+}
+
+message StartTaskRequest {
+  string session_group_id = 1;
+  string workspace_id = 2;
+  string prompt = 3;
+  repeated ContextBlock context_blocks = 4;
+  string thread_id = 5;
+  string client_message_id = 6;
+  map<string, string> ui_correlation_metadata = 7;
+}
+
+message ContextBlock {
+  ContextBlockKind kind = 1;
+  string source_label = 2;
+  string source_uri = 3;
+  string mime_type = 4;
+  string content = 5;
+}
+
+enum ContextBlockKind {
+  CONTEXT_BLOCK_KIND_UNSPECIFIED = 0;
+  CONTEXT_BLOCK_KIND_APPLICATION = 1;
+  CONTEXT_BLOCK_KIND_UNTRUSTED = 2;
+}
+
+message StartTaskResponse {
+  string task_id = 1;
+  string thread_id = 2;
+  string turn_id = 3;
+  string session_group_id = 4;
+  TaskState state = 5;
+  uint64 last_event_id = 6;
+}
+
+message StreamTaskRequest {
+  string task_id = 1;
+  oneof cursor {
+    FromStartCursor from_start = 2;
+    uint64 after_event_id = 3;
+  }
+  string client_subscriber_id = 4;
+}
+
+message FromStartCursor {}
+
+message StreamTaskResponse {
+  oneof payload {
+    TaskEvent event = 1;
+    ReplayNotice replay_notice = 2;
+  }
+}
+
+message ReplayNotice {
+  ReplayNoticeCode code = 1;
+  string message = 2;
+  uint64 oldest_buffered_event_id = 3;
+  uint64 newest_buffered_event_id = 4;
+  bool from_start_available = 5;
+  uint64 start_evicted_before_event_id = 6;
+}
+
+enum ReplayNoticeCode {
+  REPLAY_NOTICE_CODE_UNSPECIFIED = 0;
+  REPLAY_NOTICE_CODE_START_EVICTED = 1;
+  REPLAY_NOTICE_CODE_CURSOR_EVICTED = 2;
+}
+
+message TaskEvent {
+  uint64 event_id = 1;
+  string task_id = 2;
+  string session_group_id = 3;
+  string workspace_id = 4;
+  string thread_id = 5;
+  string turn_id = 6;
+  int64 created_at_unix_ms = 7;
+  oneof payload {
+    TaskLifecycleEvent lifecycle = 8;
+    AssistantDeltaEvent assistant_delta = 9;
+    AssistantMessageCompletedEvent assistant_message_completed = 10;
+    PlanUpdatedEvent plan_updated = 11;
+    ToolProgressEvent tool_progress = 12;
+    CommandStartedEvent command_started = 13;
+    CommandOutputDeltaEvent command_output_delta = 14;
+    FileDiffUpdatedEvent file_diff_updated = 15;
+    TurnDiffUpdatedEvent turn_diff_updated = 16;
+    PendingRequestCreatedEvent pending_request_created = 17;
+    PendingRequestResolvedEvent pending_request_resolved = 18;
+    TaskTerminalEvent terminal = 19;
+    GatewayWarningEvent gateway_warning = 20;
+    UnknownRawEvent unknown_raw = 21;
+  }
+}
+
+message TaskLifecycleEvent {
+  TaskLifecycleEventType lifecycle_event = 1;
+  TaskState state = 2;
+  string reason_code = 3;
+  string display_message = 4;
+}
+
+enum TaskLifecycleEventType {
+  TASK_LIFECYCLE_EVENT_TYPE_UNSPECIFIED = 0;
+  TASK_LIFECYCLE_EVENT_TYPE_TASK_STARTED = 1;
+  TASK_LIFECYCLE_EVENT_TYPE_THREAD_STARTED = 2;
+  TASK_LIFECYCLE_EVENT_TYPE_TURN_STARTED = 3;
+  TASK_LIFECYCLE_EVENT_TYPE_STATE_CHANGED = 4;
+}
+
+enum TaskState {
+  TASK_STATE_UNSPECIFIED = 0;
+  TASK_STATE_STARTING = 1;
+  TASK_STATE_RUNNING = 2;
+  TASK_STATE_WAITING_FOR_PENDING_REQUEST = 3;
+  TASK_STATE_INTERRUPTING = 4;
+  TASK_STATE_COMPLETED = 5;
+  TASK_STATE_FAILED = 6;
+  TASK_STATE_INTERRUPTED = 7;
+}
+
+message AssistantDeltaEvent {
+  string text_delta = 1;
+  bool truncated = 2;
+}
+
+message AssistantMessageCompletedEvent {
+  string message = 1;
+  bool truncated = 2;
+}
+
+message PlanUpdatedEvent {
+  string explanation = 1;
+  repeated PlanStep steps = 2;
+}
+
+message PlanStep {
+  string step = 1;
+  string status = 2;
+}
+
+message ToolProgressEvent {
+  string item_id = 1;
+  string tool_name = 2;
+  ToolState state = 3;
+  string summary = 4;
+}
+
+enum ToolState {
+  TOOL_STATE_UNSPECIFIED = 0;
+  TOOL_STATE_STARTED = 1;
+  TOOL_STATE_RUNNING = 2;
+  TOOL_STATE_COMPLETED = 3;
+  TOOL_STATE_FAILED = 4;
+}
+
+message CommandStartedEvent {
+  string item_id = 1;
+  string command_display = 2;
+  string workspace_label = 3;
+}
+
+message CommandOutputDeltaEvent {
+  string item_id = 1;
+  CommandOutputStream stream = 2;
+  string delta = 3;
+  bool truncated = 4;
+}
+
+enum CommandOutputStream {
+  COMMAND_OUTPUT_STREAM_UNSPECIFIED = 0;
+  COMMAND_OUTPUT_STREAM_COMBINED = 1;
+}
+
+message FileDiffUpdatedEvent {
+  string item_id = 1;
+  string file_label = 2;
+  string change_kind = 3;
+  string diff_summary = 4;
+  string diff_unified = 5;
+  bool truncated = 6;
+}
+
+message TurnDiffUpdatedEvent {
+  string diff_summary = 1;
+  string diff_unified = 2;
+  bool truncated = 3;
+}
+
+message PendingRequestCreatedEvent {
+  string pending_request_id = 1;
+  PendingType pending_type = 2;
+  PendingRequestDisplay display = 3;
+}
+
+message PendingRequestResolvedEvent {
+  string pending_request_id = 1;
+  PendingType pending_type = 2;
+  PendingResolution resolution = 3;
+  string display_message = 4;
+}
+
+message TaskTerminalEvent {
+  TerminalState terminal_state = 1;
+  string result_summary = 2;
+  string error_message = 3;
+}
+
+enum TerminalState {
+  TERMINAL_STATE_UNSPECIFIED = 0;
+  TERMINAL_STATE_COMPLETED = 1;
+  TERMINAL_STATE_FAILED = 2;
+  TERMINAL_STATE_INTERRUPTED = 3;
+}
+
+message GatewayWarningEvent {
+  string code = 1;
+  string message = 2;
+  string request_type = 3;
+  string auto_resolution = 4;
+  string limit_reason = 5;
+}
+
+message UnknownRawEvent {
+  string method = 1;
+  string payload_json = 2;
+  bool truncated = 3;
+}
+
+message PendingRequest {
+  string pending_request_id = 1;
+  string task_id = 2;
+  PendingType pending_type = 3;
+  int64 created_at_unix_ms = 4;
+  string thread_id = 5;
+  string turn_id = 6;
+  string item_id = 7;
+  PendingRequestDisplay display = 8;
+}
+
+enum PendingType {
+  PENDING_TYPE_UNSPECIFIED = 0;
+  PENDING_TYPE_COMMAND_APPROVAL = 1;
+  PENDING_TYPE_FILE_CHANGE_APPROVAL = 2;
+  PENDING_TYPE_PERMISSIONS_APPROVAL = 3;
+  PENDING_TYPE_MCP_ELICITATION = 4;
+  PENDING_TYPE_TOOL_USER_INPUT = 5;
+}
+
+enum PendingResolution {
+  PENDING_RESOLUTION_UNSPECIFIED = 0;
+  PENDING_RESOLUTION_ACCEPTED = 1;
+  PENDING_RESOLUTION_DECLINED = 2;
+  PENDING_RESOLUTION_CANCELLED = 3;
+  PENDING_RESOLUTION_GRANTED = 4;
+  PENDING_RESOLUTION_DENIED = 5;
+  PENDING_RESOLUTION_ANSWERED = 6;
+  PENDING_RESOLUTION_EXPIRED = 7;
+  PENDING_RESOLUTION_CLEARED = 8;
+  PENDING_RESOLUTION_FAILED = 9;
+}
+
+message PendingRequestDisplay {
+  oneof payload {
+    CommandApprovalDisplay command_approval = 1;
+    FileChangeApprovalDisplay file_change_approval = 2;
+    PermissionsApprovalDisplay permissions_approval = 3;
+    McpElicitationDisplay mcp_elicitation = 4;
+    ToolUserInputDisplay tool_user_input = 5;
+  }
+}
+
+message CommandApprovalDisplay {
+  string command_display = 1;
+  string workspace_label = 2;
+  string reason = 3;
+  ApprovalSecurityMetadata approval_security = 4;
+  repeated ApprovalDecisionOption decision_options = 5;
+}
+
+message FileChangeApprovalDisplay {
+  string file_label = 1;
+  string change_kind = 2;
+  string diff_summary = 3;
+  string diff_unified = 4;
+  FileGrantRootDisplay grant_root = 5;
+  repeated ApprovalDecisionOption decision_options = 6;
+  bool diff_unavailable = 7;
+}
+
+message PermissionsApprovalDisplay {
+  repeated PermissionAtom requested_permissions = 1;
+  PermissionScope recommended_scope = 2;
+  string reason = 3;
+}
+
+message PermissionAtom {
+  string permission_id = 1;
+  string kind = 2;
+  string display_label = 3;
+  string scope_label = 4;
+  bool grantable = 5;
+  string ungrantable_reason = 6;
+}
+
+enum PermissionScope {
+  PERMISSION_SCOPE_UNSPECIFIED = 0;
+  PERMISSION_SCOPE_TURN = 1;
+  PERMISSION_SCOPE_SESSION = 2;
+}
+
+message McpElicitationDisplay {
+  ElicitationMode mode = 1;
+  string message = 2;
+  string form_schema_json = 3;
+  string url = 4;
+  string submit_label = 5;
+}
+
+enum ElicitationMode {
+  ELICITATION_MODE_UNSPECIFIED = 0;
+  ELICITATION_MODE_FORM = 1;
+  ELICITATION_MODE_URL = 2;
+}
+
+message ToolUserInputDisplay {
+  repeated ToolUserInputQuestion questions = 1;
+}
+
+message ToolUserInputQuestion {
+  string id = 1;
+  string header = 2;
+  string question = 3;
+  bool is_other = 4;
+  bool is_secret = 5;
+  repeated string options = 6;
+}
+
+message ApprovalSecurityMetadata {
+  bool has_privilege_expansion = 1;
+  NetworkContextDisplay network_context = 2;
+  AdditionalNetworkDisplay additional_network = 3;
+  repeated AdditionalFilesystemEntry additional_filesystem_entries = 4;
+  ExecPolicyAmendmentSummary execpolicy_amendment_summary = 5;
+  repeated NetworkPolicyAmendmentSummary network_policy_amendment_summaries = 6;
+  string blocking_reason = 7;
+}
+
+message NetworkContextDisplay {
+  string host_label = 1;
+  string protocol = 2;
+}
+
+message AdditionalNetworkDisplay {
+  bool enabled = 1;
+}
+
+message AdditionalFilesystemEntry {
+  string entry_id = 1;
+  string access = 2;
+  string path_label = 3;
+  bool approvable = 4;
+  string unapprovable_reason = 5;
+}
+
+message ExecPolicyAmendmentSummary {
+  string command_display = 1;
+  bool truncated = 2;
+}
+
+message NetworkPolicyAmendmentSummary {
+  string host_label = 1;
+  string action = 2;
+  bool approvable = 3;
+}
+
+message FileGrantRootDisplay {
+  bool present = 1;
+  string root_label = 2;
+  bool under_configured_cwd = 3;
+  bool approvable = 4;
+  string unapprovable_reason = 5;
+}
+
+message ApprovalDecisionOption {
+  string decision_id = 1;
+  ApprovalWireDecision wire_decision = 2;
+  string display_label = 3;
+  string summary = 4;
+  bool selectable = 5;
+  string unsupported_reason = 6;
+}
+
+enum ApprovalWireDecision {
+  APPROVAL_WIRE_DECISION_UNSPECIFIED = 0;
+  APPROVAL_WIRE_DECISION_ACCEPT = 1;
+  APPROVAL_WIRE_DECISION_ACCEPT_FOR_SESSION = 2;
+  APPROVAL_WIRE_DECISION_DECLINE = 3;
+  APPROVAL_WIRE_DECISION_CANCEL = 4;
+}
+
+message GetTaskStatusRequest {
+  oneof locator {
+    string task_id = 1;
+    ClientMessageTaskLocator client_message_locator = 2;
+    ThreadTaskLocator thread_locator = 3;
+  }
+}
+
+message ClientMessageTaskLocator {
+  string session_group_id = 1;
+  string client_message_id = 2;
+}
+
+message ThreadTaskLocator {
+  string session_group_id = 1;
+  string thread_id = 2;
+}
+
+message GetTaskStatusResponse {
+  string task_id = 1;
+  TaskState state = 2;
+  string session_group_id = 3;
+  string workspace_id = 4;
+  string thread_id = 5;
+  string turn_id = 6;
+  uint64 last_event_id = 7;
+  uint64 oldest_buffered_event_id = 8;
+  uint64 newest_buffered_event_id = 9;
+  bool from_start_available = 10;
+  uint64 start_evicted_before_event_id = 11;
+  repeated PendingRequest active_pending_requests = 12;
+  TaskTerminalEvent terminal = 13;
+}
+
+message RespondPendingRequestRequest {
+  string task_id = 1;
+  string pending_request_id = 2;
+  string client_response_id = 3;
+  oneof response {
+    ApprovalPendingResponse approval = 4;
+    PermissionsPendingResponse permissions = 5;
+    McpElicitationPendingResponse mcp_elicitation = 6;
+    ToolUserInputPendingResponse tool_user_input = 7;
+  }
+}
+
+message ApprovalPendingResponse {
+  string decision_id = 1;
+}
+
+message PermissionsPendingResponse {
+  repeated string permission_ids = 1;
+  PermissionScope scope = 2;
+  bool strict_auto_review = 3;
+}
+
+message McpElicitationPendingResponse {
+  McpElicitationAction action = 1;
+  string content_json = 2;
+}
+
+enum McpElicitationAction {
+  MCP_ELICITATION_ACTION_UNSPECIFIED = 0;
+  MCP_ELICITATION_ACTION_ACCEPT = 1;
+  MCP_ELICITATION_ACTION_DECLINE = 2;
+  MCP_ELICITATION_ACTION_CANCEL = 3;
+}
+
+message ToolUserInputPendingResponse {
+  repeated ToolUserInputAnswer answers = 1;
+}
+
+message ToolUserInputAnswer {
+  string question_id = 1;
+  repeated string answers = 2;
+}
+
+message RespondPendingRequestResponse {
+  string task_id = 1;
+  string pending_request_id = 2;
+  string client_response_id = 3;
+  bool accepted = 4;
+  bool already_applied = 5;
+  uint64 resolved_event_id = 6;
+}
+
+message InterruptTaskRequest {
+  oneof locator {
+    string task_id = 1;
+    ClientMessageTaskLocator client_message_locator = 2;
+  }
+  string client_request_id = 3;
+}
+
+message InterruptTaskResponse {
+  string task_id = 1;
+  string session_group_id = 2;
+  string thread_id = 3;
+  string turn_id = 4;
+  TaskState state = 5;
+  bool interrupt_sent = 6;
+  bool pre_turn_cancel_recorded = 7;
+  bool already_interrupting = 8;
+  bool already_terminal = 9;
+  uint64 last_event_id = 10;
+}
+
+message GatewayErrorDetails {
+  string reason = 1;
+  string display_message = 2;
+  string task_id = 3;
+  string session_group_id = 4;
+  string client_message_id = 5;
+  string client_response_id = 6;
+  string pending_request_id = 7;
+  string thread_id = 8;
+  bool retryable = 9;
+}
