@@ -1,0 +1,71 @@
+version: 2
+
+project_name: codex-runtime
+
+builds:
+  - id: codex-runtime-gateway
+    main: ./gateway/cmd/codex-runtime-gateway
+    binary: codex-runtime-gateway
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - >-
+        -s -w
+        -X main.version={{ .Version }}
+        -X main.commit={{ .Commit }}
+        -X main.date={{ .CommitDate }}
+        -X main.builtBy=goreleaser
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: codex-runtime-gateway
+    ids:
+      - codex-runtime-gateway
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - README.md
+      - CHANGELOG.md
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  github:
+    owner: Dirard
+    name: codex-runtime
+  ids:
+    - codex-runtime-gateway
+  prerelease: auto
+  mode: replace
+  name_template: "{{ .ProjectName }} {{ .Tag }}"
+  header: |
+    Codex Runtime is a chat-first Go SDK and local runtime gateway for Codex app-server.
+
+    This release publishes the `codex-runtime-gateway` binary. It does not bundle Codex itself.

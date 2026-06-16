@@ -12,6 +12,429 @@ service CodexControl {
   rpc GetTaskStatus(GetTaskStatusRequest) returns (GetTaskStatusResponse);
 }
 
+service ChatRuntimeService {
+  rpc StartChatRun(StartChatRunRequest) returns (StartChatRunResponse);
+  rpc GetChat(GetChatRequest) returns (GetChatResponse);
+  rpc RunChatTurn(RunChatTurnRequest) returns (RunChatTurnResponse);
+  rpc GetChatStatus(GetChatStatusRequest) returns (GetChatStatusResponse);
+  rpc GetChatHistory(GetChatHistoryRequest) returns (GetChatHistoryResponse);
+  rpc StreamChatEvents(StreamChatEventsRequest) returns (stream StreamChatEventsResponse);
+  rpc RespondChatPending(RespondChatPendingRequest) returns (RespondChatPendingResponse);
+  rpc InterruptChatRun(InterruptChatRunRequest) returns (InterruptChatRunResponse);
+}
+
+message ChatRuntimeContext {
+  string session_group_id = 1;
+  string workspace_id = 2;
+}
+
+message StartChatRunRequest {
+  ChatRuntimeContext context = 1;
+  string prompt = 2;
+  repeated ContextBlock context_blocks = 3;
+  string client_message_id = 4;
+  string idempotency_key = 5;
+  map<string, string> ui_correlation_metadata = 6;
+}
+
+message StartChatRunResponse {
+  string chat_id = 1;
+  string run_id = 2;
+  string session_group_id = 3;
+  string workspace_id = 4;
+  ChatStatus status = 5;
+  uint64 last_event_id = 6;
+  string event_cursor = 7;
+  bool first_turn_accepted = 8;
+  ChatCapabilitySet capabilities = 9;
+}
+
+message GetChatRequest {
+  ChatRuntimeContext context = 1;
+  string chat_id = 2;
+}
+
+message GetChatResponse {
+  Chat chat = 1;
+  ChatStatus status = 2;
+}
+
+message RunChatTurnRequest {
+  ChatRuntimeContext context = 1;
+  string chat_id = 2;
+  string prompt = 3;
+  repeated ContextBlock context_blocks = 4;
+  string client_message_id = 5;
+  string idempotency_key = 6;
+}
+
+message RunChatTurnResponse {
+  string chat_id = 1;
+  string run_id = 2;
+  string session_group_id = 3;
+  string workspace_id = 4;
+  ChatStatus status = 5;
+  uint64 last_event_id = 6;
+  string event_cursor = 7;
+  bool turn_accepted = 8;
+}
+
+message GetChatStatusRequest {
+  ChatRuntimeContext context = 1;
+  string chat_id = 2;
+}
+
+message GetChatStatusResponse {
+  ChatStatus status = 1;
+}
+
+message GetChatHistoryRequest {
+  ChatRuntimeContext context = 1;
+  string chat_id = 2;
+  ChatHistoryDepth requested_depth = 3;
+  string cursor = 4;
+  uint32 limit = 5;
+  ChatHistorySortDirection sort_direction = 6;
+}
+
+message GetChatHistoryResponse {
+  string chat_id = 1;
+  repeated ChatTurnSummary turns = 2;
+  string next_cursor = 3;
+  string backwards_cursor = 4;
+  ChatHistoryDepth returned_depth = 5;
+  ChatCapabilityState capability = 6;
+  ChatNarrowedOutcome narrowed = 7;
+}
+
+message StreamChatEventsRequest {
+  ChatRuntimeContext context = 1;
+  string chat_id = 2;
+  oneof cursor {
+    ChatFromStartCursor from_start = 3;
+    uint64 after_event_id = 4;
+    string after_event_cursor = 5;
+  }
+  string client_subscriber_id = 6;
+}
+
+message ChatFromStartCursor {}
+
+message StreamChatEventsResponse {
+  oneof payload {
+    ChatEvent event = 1;
+    ChatReplayNotice replay_notice = 2;
+    ChatNarrowedOutcome narrowed = 3;
+  }
+}
+
+message RespondChatPendingRequest {
+  ChatRuntimeContext context = 1;
+  string chat_id = 2;
+  string pending_request_id = 3;
+  string client_response_id = 4;
+  string idempotency_key = 5;
+  oneof response {
+    ApprovalPendingResponse approval = 6;
+    PermissionsPendingResponse permissions = 7;
+    McpElicitationPendingResponse mcp_elicitation = 8;
+    ToolUserInputPendingResponse tool_user_input = 9;
+  }
+}
+
+message RespondChatPendingResponse {
+  string chat_id = 1;
+  string run_id = 2;
+  string pending_request_id = 3;
+  string client_response_id = 4;
+  bool accepted = 5;
+  bool already_applied = 6;
+  uint64 last_event_id = 7;
+  ChatStatus status = 8;
+}
+
+message InterruptChatRunRequest {
+  ChatRuntimeContext context = 1;
+  string chat_id = 2;
+  string run_id = 3;
+  string client_request_id = 4;
+  string idempotency_key = 5;
+}
+
+message InterruptChatRunResponse {
+  string chat_id = 1;
+  string run_id = 2;
+  ChatStatus status = 3;
+  bool interrupt_sent = 4;
+  bool already_interrupting = 5;
+  bool already_terminal = 6;
+  uint64 last_event_id = 7;
+}
+
+message Chat {
+  string chat_id = 1;
+  string session_group_id = 2;
+  string workspace_id = 3;
+  ChatThreadLifecycle thread_lifecycle = 4;
+  int64 created_at_unix_ms = 5;
+  int64 updated_at_unix_ms = 6;
+  string preview = 7;
+  bool ephemeral = 8;
+  ChatCapabilitySet capabilities = 9;
+}
+
+message ChatStatus {
+  string chat_id = 1;
+  string session_group_id = 2;
+  string workspace_id = 3;
+  ChatThreadLookupState lookup = 4;
+  ChatThreadLifecycle thread_lifecycle = 5;
+  ChatTurnLifecycle current_run_lifecycle = 6;
+  string current_run_id = 7;
+  string last_run_id = 8;
+  ChatCapabilitySet capabilities = 9;
+  ChatGatewayLocalState gateway_local = 10;
+  repeated ChatPendingRequest active_pending_requests = 11;
+  ChatTerminal terminal = 12;
+  uint64 last_event_id = 13;
+}
+
+message ChatCapabilitySet {
+  ChatCapabilityState status = 1;
+  ChatCapabilityState history = 2;
+  ChatCapabilityState event_stream = 3;
+  ChatCapabilityState replay = 4;
+  ChatCapabilityState pending = 5;
+  ChatCapabilityState interrupt = 6;
+}
+
+message ChatGatewayLocalState {
+  repeated ChatGatewayLocalSignal signals = 1;
+  string process_epoch = 2;
+}
+
+message ChatPendingRequest {
+  string pending_request_id = 1;
+  string chat_id = 2;
+  string run_id = 3;
+  PendingType pending_type = 4;
+  int64 created_at_unix_ms = 5;
+  string item_id = 6;
+  PendingRequestDisplay display = 7;
+}
+
+message ChatTurnSummary {
+  string run_id = 1;
+  ChatTurnLifecycle lifecycle = 2;
+  ChatTurnItemsView items_view = 3;
+  int64 started_at_unix_ms = 4;
+  int64 completed_at_unix_ms = 5;
+  int64 duration_ms = 6;
+  string user_message_id = 7;
+  string assistant_message_id = 8;
+  string summary = 9;
+  bool truncated = 10;
+  ChatErrorSummary error = 11;
+}
+
+message ChatEvent {
+  uint64 event_id = 1;
+  string event_cursor = 2;
+  string chat_id = 3;
+  string session_group_id = 4;
+  string workspace_id = 5;
+  string run_id = 6;
+  int64 created_at_unix_ms = 7;
+  oneof payload {
+    ChatLifecycleEvent lifecycle = 8;
+    AssistantDeltaEvent assistant_delta = 9;
+    AssistantMessageCompletedEvent assistant_message_completed = 10;
+    PlanUpdatedEvent plan_updated = 11;
+    ToolProgressEvent tool_progress = 12;
+    CommandStartedEvent command_started = 13;
+    CommandOutputDeltaEvent command_output_delta = 14;
+    FileDiffUpdatedEvent file_diff_updated = 15;
+    TurnDiffUpdatedEvent turn_diff_updated = 16;
+    ChatPendingCreatedEvent pending_request_created = 17;
+    ChatPendingResolvedEvent pending_request_resolved = 18;
+    ChatTerminalEvent terminal = 19;
+    GatewayWarningEvent gateway_warning = 20;
+    ChatStatusUpdatedEvent status_updated = 21;
+  }
+}
+
+message ChatLifecycleEvent {
+  ChatLifecycleEventType lifecycle_event = 1;
+  ChatThreadLifecycle thread_lifecycle = 2;
+  ChatTurnLifecycle turn_lifecycle = 3;
+  string reason_code = 4;
+  string display_message = 5;
+}
+
+message ChatStatusUpdatedEvent {
+  ChatStatus status = 1;
+}
+
+message ChatPendingCreatedEvent {
+  ChatPendingRequest pending_request = 1;
+}
+
+message ChatPendingResolvedEvent {
+  string pending_request_id = 1;
+  PendingType pending_type = 2;
+  PendingResolution resolution = 3;
+  string display_message = 4;
+}
+
+message ChatTerminalEvent {
+  ChatTerminal terminal = 1;
+}
+
+message ChatTerminal {
+  ChatTurnLifecycle terminal_lifecycle = 1;
+  string result_summary = 2;
+  string error_message = 3;
+}
+
+message ChatReplayNotice {
+  ChatReplayNoticeCode code = 1;
+  string message = 2;
+  uint64 oldest_buffered_event_id = 3;
+  uint64 newest_buffered_event_id = 4;
+  bool from_start_available = 5;
+  uint64 start_evicted_before_event_id = 6;
+  string process_epoch = 7;
+}
+
+message ChatNarrowedOutcome {
+  ChatOutcomeCategory outcome = 1;
+  string reason = 2;
+  string display_message = 3;
+  ChatCapabilityState requested = 4;
+  ChatCapabilityState returned = 5;
+  bool retryable = 6;
+}
+
+message ChatErrorSummary {
+  string reason = 1;
+  string display_message = 2;
+  bool retryable = 3;
+}
+
+message ChatRuntimeErrorDetails {
+  ChatOutcomeCategory outcome = 1;
+  string reason = 2;
+  string display_message = 3;
+  string chat_id = 4;
+  string run_id = 5;
+  string session_group_id = 6;
+  string pending_request_id = 7;
+  string idempotency_key = 8;
+  bool retryable = 9;
+}
+
+enum ChatThreadLookupState {
+  CHAT_THREAD_LOOKUP_STATE_UNSPECIFIED = 0;
+  CHAT_THREAD_LOOKUP_STATE_VALID = 1;
+  CHAT_THREAD_LOOKUP_STATE_INVALID = 2;
+  CHAT_THREAD_LOOKUP_STATE_NOT_FOUND = 3;
+  CHAT_THREAD_LOOKUP_STATE_CODEX_UNAVAILABLE = 4;
+  CHAT_THREAD_LOOKUP_STATE_UNAUTHORIZED = 5;
+  CHAT_THREAD_LOOKUP_STATE_UNKNOWN = 6;
+}
+
+enum ChatThreadLifecycle {
+  CHAT_THREAD_LIFECYCLE_UNSPECIFIED = 0;
+  CHAT_THREAD_LIFECYCLE_NOT_LOADED = 1;
+  CHAT_THREAD_LIFECYCLE_IDLE = 2;
+  CHAT_THREAD_LIFECYCLE_ACTIVE_RUNNING = 3;
+  CHAT_THREAD_LIFECYCLE_WAITING_ON_APPROVAL = 4;
+  CHAT_THREAD_LIFECYCLE_WAITING_ON_USER_INPUT = 5;
+  CHAT_THREAD_LIFECYCLE_SYSTEM_ERROR = 6;
+  CHAT_THREAD_LIFECYCLE_UNKNOWN = 7;
+}
+
+enum ChatTurnLifecycle {
+  CHAT_TURN_LIFECYCLE_UNSPECIFIED = 0;
+  CHAT_TURN_LIFECYCLE_IN_PROGRESS = 1;
+  CHAT_TURN_LIFECYCLE_COMPLETED = 2;
+  CHAT_TURN_LIFECYCLE_INTERRUPTED = 3;
+  CHAT_TURN_LIFECYCLE_FAILED = 4;
+  CHAT_TURN_LIFECYCLE_TURN_UNKNOWN = 5;
+  CHAT_TURN_LIFECYCLE_TURN_UNAVAILABLE = 6;
+}
+
+enum ChatCapabilityState {
+  CHAT_CAPABILITY_STATE_UNSPECIFIED = 0;
+  CHAT_CAPABILITY_STATE_SUPPORTED = 1;
+  CHAT_CAPABILITY_STATE_UNSUPPORTED = 2;
+  CHAT_CAPABILITY_STATE_UNAVAILABLE = 3;
+  CHAT_CAPABILITY_STATE_UNKNOWN = 4;
+  CHAT_CAPABILITY_STATE_NARROWED = 5;
+}
+
+enum ChatGatewayLocalSignal {
+  CHAT_GATEWAY_LOCAL_SIGNAL_UNSPECIFIED = 0;
+  CHAT_GATEWAY_LOCAL_SIGNAL_LIVE = 1;
+  CHAT_GATEWAY_LOCAL_SIGNAL_REPLAY_AVAILABLE = 2;
+  CHAT_GATEWAY_LOCAL_SIGNAL_REPLAY_UNAVAILABLE = 3;
+  CHAT_GATEWAY_LOCAL_SIGNAL_PENDING_KNOWN = 4;
+  CHAT_GATEWAY_LOCAL_SIGNAL_PENDING_UNAVAILABLE_AFTER_RESTART = 5;
+  CHAT_GATEWAY_LOCAL_SIGNAL_IDEMPOTENCY_UNAVAILABLE_AFTER_RESTART = 6;
+}
+
+enum ChatHistoryDepth {
+  CHAT_HISTORY_DEPTH_UNSPECIFIED = 0;
+  CHAT_HISTORY_DEPTH_TURN_SUMMARY = 1;
+  CHAT_HISTORY_DEPTH_ITEM_LEVEL = 2;
+}
+
+enum ChatTurnItemsView {
+  CHAT_TURN_ITEMS_VIEW_UNSPECIFIED = 0;
+  CHAT_TURN_ITEMS_VIEW_NOT_LOADED = 1;
+  CHAT_TURN_ITEMS_VIEW_SUMMARY = 2;
+  CHAT_TURN_ITEMS_VIEW_FULL_UNSUPPORTED = 3;
+}
+
+enum ChatHistorySortDirection {
+  CHAT_HISTORY_SORT_DIRECTION_UNSPECIFIED = 0;
+  CHAT_HISTORY_SORT_DIRECTION_ASCENDING = 1;
+  CHAT_HISTORY_SORT_DIRECTION_DESCENDING = 2;
+}
+
+enum ChatLifecycleEventType {
+  CHAT_LIFECYCLE_EVENT_TYPE_UNSPECIFIED = 0;
+  CHAT_LIFECYCLE_EVENT_TYPE_CHAT_STARTED = 1;
+  CHAT_LIFECYCLE_EVENT_TYPE_RUN_STARTED = 2;
+  CHAT_LIFECYCLE_EVENT_TYPE_STATE_CHANGED = 3;
+}
+
+enum ChatReplayNoticeCode {
+  CHAT_REPLAY_NOTICE_CODE_UNSPECIFIED = 0;
+  CHAT_REPLAY_NOTICE_CODE_START_EVICTED = 1;
+  CHAT_REPLAY_NOTICE_CODE_CURSOR_EVICTED = 2;
+  CHAT_REPLAY_NOTICE_CODE_UNAVAILABLE_AFTER_RESTART = 3;
+  CHAT_REPLAY_NOTICE_CODE_NARROWED_TO_LIVE = 4;
+}
+
+enum ChatOutcomeCategory {
+  CHAT_OUTCOME_CATEGORY_UNSPECIFIED = 0;
+  CHAT_OUTCOME_CATEGORY_INVALID_ARGUMENT = 1;
+  CHAT_OUTCOME_CATEGORY_UNAUTHENTICATED = 2;
+  CHAT_OUTCOME_CATEGORY_PERMISSION_DENIED = 3;
+  CHAT_OUTCOME_CATEGORY_NOT_FOUND = 4;
+  CHAT_OUTCOME_CATEGORY_FAILED_PRECONDITION = 5;
+  CHAT_OUTCOME_CATEGORY_ABORTED = 6;
+  CHAT_OUTCOME_CATEGORY_UNSUPPORTED = 7;
+  CHAT_OUTCOME_CATEGORY_UNAVAILABLE = 8;
+  CHAT_OUTCOME_CATEGORY_UNKNOWN = 9;
+  CHAT_OUTCOME_CATEGORY_OUT_OF_RANGE = 10;
+  CHAT_OUTCOME_CATEGORY_NARROWED = 11;
+  CHAT_OUTCOME_CATEGORY_DEADLINE_EXCEEDED = 12;
+  CHAT_OUTCOME_CATEGORY_CANCELLED = 13;
+  CHAT_OUTCOME_CATEGORY_INTERNAL = 14;
+}
+
 message StartTaskRequest {
   string session_group_id = 1;
   string workspace_id = 2;
@@ -79,6 +502,8 @@ enum ReplayNoticeCode {
 }
 
 message TaskEvent {
+  reserved 21;
+
   uint64 event_id = 1;
   string task_id = 2;
   string session_group_id = 3;
@@ -100,7 +525,6 @@ message TaskEvent {
     PendingRequestResolvedEvent pending_request_resolved = 18;
     TaskTerminalEvent terminal = 19;
     GatewayWarningEvent gateway_warning = 20;
-    UnknownRawEvent unknown_raw = 21;
   }
 }
 
@@ -230,12 +654,6 @@ message GatewayWarningEvent {
   string request_type = 3;
   string auto_resolution = 4;
   string limit_reason = 5;
-}
-
-message UnknownRawEvent {
-  string method = 1;
-  string payload_json = 2;
-  bool truncated = 3;
 }
 
 message PendingRequest {
