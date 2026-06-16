@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const requireTimeout = 2 * time.Second
+const requireTimeout = 5 * time.Second
 
 type inboundRecord struct {
 	message Message

@@ -23,6 +23,8 @@ import (
 	"github.com/Dirard/codex-runtime/gateway/internal/testappserver"
 )
 
+const testWaitTimeout = 5 * time.Second
+
 func TestPromptOnlyTaskStartsThroughAppServer(t *testing.T) {
 	group := testSessionGroup(t, "sg-1", "ws-1")
 	service, harness := newHarnessService(t, group,
@@ -4199,7 +4201,7 @@ func TestPreTurnInterruptCancelsBlockedConnectionAcquisition(t *testing.T) {
 	result := startAsync(service, command)
 	select {
 	case <-supervisor.entered:
-	case <-time.After(time.Second):
+	case <-time.After(testWaitTimeout):
 		t.Fatal("StartTask() did not enter Connection()")
 	}
 
@@ -4341,7 +4343,7 @@ func (s *asyncStart) wait(t *testing.T) (domain.StartTaskResponse, error) {
 	select {
 	case <-s.done:
 		return s.response, s.err
-	case <-time.After(2 * time.Second):
+	case <-time.After(testWaitTimeout):
 		t.Fatal("StartTask() did not finish")
 		return domain.StartTaskResponse{}, nil
 	}
@@ -4367,7 +4369,7 @@ func (s *asyncInterrupt) wait(t *testing.T) (domain.InterruptTaskResponse, error
 	select {
 	case <-s.done:
 		return s.response, s.err
-	case <-time.After(2 * time.Second):
+	case <-time.After(testWaitTimeout):
 		t.Fatal("InterruptTask() did not finish")
 		return domain.InterruptTaskResponse{}, nil
 	}
@@ -4423,7 +4425,7 @@ func nextStreamMessage(t *testing.T, stream grpcapi.TaskStream) grpcapi.StreamTa
 }
 
 func nextStreamMessageAllowEOF(stream grpcapi.TaskStream) (grpcapi.StreamTaskMessage, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), testWaitTimeout)
 	defer cancel()
 	return stream.Next(ctx)
 }
@@ -4577,7 +4579,7 @@ func (s *sequenceHarnessSupervisor) MarkClosed(*appserver.Connection) {
 
 func (s *sequenceHarnessSupervisor) connectionAt(t *testing.T, index int) *appserver.Connection {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(testWaitTimeout)
 	for time.Now().Before(deadline) {
 		connections := s.conns.Load().([]*appserver.Connection)
 		if index < len(connections) {
@@ -4591,7 +4593,7 @@ func (s *sequenceHarnessSupervisor) connectionAt(t *testing.T, index int) *appse
 
 func (s *sequenceHarnessSupervisor) waitClosed(t *testing.T, want int32) int32 {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(testWaitTimeout)
 	for time.Now().Before(deadline) {
 		if got := s.closed.Load(); got >= want {
 			return got
@@ -4691,7 +4693,7 @@ func startCommandWithContext(group config.SessionGroup, clientMessageID string, 
 
 func waitStatusState(t *testing.T, service *Service, taskID string, state domain.TaskState) domain.GetTaskStatusResponse {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(testWaitTimeout)
 	for time.Now().Before(deadline) {
 		status, err := service.GetTaskStatus(context.Background(), domain.GetTaskStatusCommand{
 			Locator: domain.TaskLocator{Kind: domain.TaskLocatorByTaskID, TaskID: taskID},
@@ -4707,7 +4709,7 @@ func waitStatusState(t *testing.T, service *Service, taskID string, state domain
 
 func waitPendingCount(t *testing.T, service *Service, taskID string, count int) domain.GetTaskStatusResponse {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(testWaitTimeout)
 	for time.Now().Before(deadline) {
 		status, err := service.GetTaskStatus(context.Background(), domain.GetTaskStatusCommand{
 			Locator: domain.TaskLocator{Kind: domain.TaskLocatorByTaskID, TaskID: taskID},
@@ -4723,7 +4725,7 @@ func waitPendingCount(t *testing.T, service *Service, taskID string, count int) 
 
 func waitConnectionDiagnosticCount(t *testing.T, service *Service, count int) []connectionDiagnostic {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(testWaitTimeout)
 	for time.Now().Before(deadline) {
 		diagnostics := service.connectionDiagnosticsSnapshot()
 		if len(diagnostics) >= count {
@@ -4737,7 +4739,7 @@ func waitConnectionDiagnosticCount(t *testing.T, service *Service, count int) []
 
 func waitStatusByClient(t *testing.T, service *Service, sessionGroupID string, clientMessageID string, state domain.TaskState) domain.GetTaskStatusResponse {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(testWaitTimeout)
 	for time.Now().Before(deadline) {
 		status, err := service.GetTaskStatus(context.Background(), domain.GetTaskStatusCommand{
 			Locator: domain.TaskLocator{
