@@ -1670,9 +1670,11 @@ func TestPendingPermissionsGrantSubsetWireShape(t *testing.T) {
 
 func TestPendingServerRequestResolvedClearsActivePending(t *testing.T) {
 	group := testSessionGroup(t, "sg-1", "ws-1")
+	pendingCreated := make(chan struct{})
 	service, harness := newHarnessService(t, group,
 		append(append(testappserver.ThreadStart("thread-1"), testappserver.TurnStart("thread-1", "turn-1")...),
 			testappserver.SendCommandApprovalRequest(101, "thread-1", "turn-1", "item-command"),
+			testappserver.WaitForSignal("pending request created", pendingCreated),
 			testappserver.SendNotification("serverRequest/resolved", map[string]any{"requestId": 101}),
 		)...,
 	)
@@ -1681,6 +1683,8 @@ func TestPendingServerRequestResolvedClearsActivePending(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StartTask() error = %v", err)
 	}
+	waitPendingCount(t, service, response.TaskID, 1)
+	close(pendingCreated)
 	events := readStreamEvents(t, service, response.TaskID, 5)
 	created, ok := events[3].Payload.(domain.PendingRequestCreatedEvent)
 	if !ok {
@@ -1700,9 +1704,11 @@ func TestPendingServerRequestResolvedClearsActivePending(t *testing.T) {
 func TestPendingServerRequestResolvedClearsPaddedStringRequestID(t *testing.T) {
 	group := testSessionGroup(t, "sg-1", "ws-1")
 	serverRequestID := " 101 "
+	pendingCreated := make(chan struct{})
 	service, harness := newHarnessService(t, group,
 		append(append(testappserver.ThreadStart("thread-1"), testappserver.TurnStart("thread-1", "turn-1")...),
 			testappserver.SendCommandApprovalRequest(serverRequestID, "thread-1", "turn-1", "item-command"),
+			testappserver.WaitForSignal("pending request created", pendingCreated),
 			testappserver.SendNotification("serverRequest/resolved", map[string]any{"requestId": serverRequestID}),
 		)...,
 	)
@@ -1711,6 +1717,8 @@ func TestPendingServerRequestResolvedClearsPaddedStringRequestID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StartTask() error = %v", err)
 	}
+	waitPendingCount(t, service, response.TaskID, 1)
+	close(pendingCreated)
 	events := readStreamEvents(t, service, response.TaskID, 5)
 	createdID := ""
 	for _, event := range events {
@@ -2479,9 +2487,11 @@ func TestPendingOverLimitAutoResolvesWithoutCreatingPublicPending(t *testing.T) 
 	group.PendingLimits.MaxDisplayPayloadBytes = domain.MaxOutboundPendingDisplayPayloadBytes
 	group.PendingLimits.StatusNonPendingBudgetBytes = 64 * domain.KiB
 	group.GRPCLimits.OutboundMessageBytes = 4 * domain.MiB
+	firstPendingCreated := make(chan struct{})
 	service, harness := newHarnessService(t, group,
 		append(append(testappserver.ThreadStart("thread-1"), testappserver.TurnStart("thread-1", "turn-1")...),
 			testappserver.SendCommandApprovalRequest(101, "thread-1", "turn-1", "item-command-1"),
+			testappserver.WaitForSignal("first pending request created", firstPendingCreated),
 			testappserver.SendFileApprovalRequest(102, "thread-1", "turn-1", "item-file-2"),
 			testappserver.ExpectResponseID(102, testappserver.WithResult(map[string]any{"decision": "decline"})),
 		)...,
@@ -2492,6 +2502,7 @@ func TestPendingOverLimitAutoResolvesWithoutCreatingPublicPending(t *testing.T) 
 		t.Fatalf("StartTask() error = %v", err)
 	}
 	status := waitPendingCount(t, service, response.TaskID, 1)
+	close(firstPendingCreated)
 	if status.ActivePendingRequests[0].ItemID != "item-command-1" {
 		t.Fatalf("active pending = %#v", status.ActivePendingRequests)
 	}

@@ -63,6 +63,7 @@ release:
   ids:
     - codex-runtime-gateway
   prerelease: auto
+  replace_existing_artifacts: true
   mode: replace
   name_template: "{{ .ProjectName }} {{ .Tag }}"
   header: |
