@@ -1,0 +1,11 @@
+name = "writer-notes"
+default_agent = "writer"
+description = "Starter workflow with deterministic local notes and source-aware writing guidance."
+
+[skills.writer_notes]
+path = "skills/writer-notes/SKILL.md"
+
+[mcp_servers.writer_notes_search]
+transport = "stdio"
+command = "tools/writer_notes_search"
+args = ["--fixture-dir", "references"]

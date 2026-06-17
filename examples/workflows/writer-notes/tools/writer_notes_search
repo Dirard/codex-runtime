@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+set -eu
+
+echo "writer_notes_search is a stdio MCP fixture shim." >&2
+echo "Build or run examples/workflow-tools/writer-notes-search with --fixture-dir references." >&2
+exit 1

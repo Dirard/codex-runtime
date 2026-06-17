@@ -23,6 +23,10 @@ type sensitiveRegistryProvider interface {
 	SensitiveRegistry() *redact.Registry
 }
 
+type interruptRequestSender interface {
+	SendInterruptTurn(context.Context, appserver.TurnInterruptCall) error
+}
+
 type chatPendingRecord struct {
 	runScope   chatstate.RunScope
 	record     *pending.Record
@@ -71,7 +75,7 @@ func (s *Service) handleForwardedServerRequest(connection AppServerClient, reque
 	if sessionGroupID == "" {
 		return false
 	}
-	session, ok := s.sessions[sessionGroupID]
+	session, ok := s.sessionByID(sessionGroupID)
 	if !ok {
 		return false
 	}
@@ -253,25 +257,57 @@ func (s *Service) InterruptChatRun(ctx context.Context, command domain.Interrupt
 		return response, nil
 	}
 
-	connection, err := session.ConnectionProvider.Connection(ctx)
-	if err != nil {
-		_ = s.store.ReleaseIdempotency(idempotencyScope)
-		return domain.InterruptChatRunResponse{}, appServerCallError(err, command.SessionGroupID, command.ClientRequestID, command.ChatID)
+	interruptAttempted := false
+	interruptSent := false
+	for attempt := 0; attempt < startChatFreshConnectionAttempts; attempt++ {
+		connection, err := session.ConnectionProvider.Connection(ctx)
+		if err != nil {
+			if !retryableFreshConnectionStartError(err) || attempt == startChatFreshConnectionAttempts-1 {
+				if !interruptAttempted {
+					_ = s.store.ReleaseIdempotency(idempotencyScope)
+				}
+				return domain.InterruptChatRunResponse{}, appServerCallError(err, command.SessionGroupID, command.ClientRequestID, command.ChatID)
+			}
+			if err := waitForFreshConnectionStartRetry(ctx); err != nil {
+				if !interruptAttempted {
+					_ = s.store.ReleaseIdempotency(idempotencyScope)
+				}
+				return domain.InterruptChatRunResponse{}, err
+			}
+			continue
+		}
+		if connection == nil {
+			if !interruptAttempted {
+				_ = s.store.ReleaseIdempotency(idempotencyScope)
+			}
+			return domain.InterruptChatRunResponse{}, internalGatewayError(command.SessionGroupID, command.ClientRequestID, command.ChatID)
+		}
+		s.configureConnection(connection)
+		if err := callerErrorFromContext(ctx, command.SessionGroupID, command.ClientRequestID); err != nil {
+			if !interruptAttempted {
+				_ = s.store.ReleaseIdempotency(idempotencyScope)
+			}
+			return domain.InterruptChatRunResponse{}, err
+		}
+		interruptAttempted = true
+		if err := sendInterruptTurn(ctx, connection, appserver.TurnInterruptCall{
+			ThreadID: command.ChatID,
+			TurnID:   command.RunID,
+			Timeout:  s.turnInterruptTimeout,
+		}); err != nil {
+			if !retryableFreshConnectionStartError(err) || attempt == startChatFreshConnectionAttempts-1 {
+				return domain.InterruptChatRunResponse{}, appServerCallError(err, command.SessionGroupID, command.ClientRequestID, command.ChatID)
+			}
+			if err := waitForFreshConnectionStartRetry(ctx); err != nil {
+				return domain.InterruptChatRunResponse{}, err
+			}
+			continue
+		}
+		interruptSent = true
+		break
 	}
-	if connection == nil {
-		_ = s.store.ReleaseIdempotency(idempotencyScope)
+	if !interruptSent {
 		return domain.InterruptChatRunResponse{}, internalGatewayError(command.SessionGroupID, command.ClientRequestID, command.ChatID)
-	}
-	s.configureConnection(connection)
-	if err := callerErrorFromContext(ctx, command.SessionGroupID, command.ClientRequestID); err != nil {
-		_ = s.store.ReleaseIdempotency(idempotencyScope)
-		return domain.InterruptChatRunResponse{}, err
-	}
-	if _, err := connection.InterruptTurn(ctx, appserver.TurnInterruptCall{
-		TurnID:  command.RunID,
-		Timeout: s.turnInterruptTimeout,
-	}); err != nil {
-		return domain.InterruptChatRunResponse{}, appServerCallError(err, command.SessionGroupID, command.ClientRequestID, command.ChatID)
 	}
 	_, _ = s.store.UpdateRunState(runScope, chatstate.RunStateInterrupting)
 	event, err := s.store.AppendEvent(chatstate.EventInput{
@@ -301,6 +337,14 @@ func (s *Service) InterruptChatRun(ctx context.Context, command domain.Interrupt
 		return domain.InterruptChatRunResponse{}, err
 	}
 	return response, nil
+}
+
+func sendInterruptTurn(ctx context.Context, connection AppServerClient, call appserver.TurnInterruptCall) error {
+	if sender, ok := connection.(interruptRequestSender); ok {
+		return sender.SendInterruptTurn(ctx, call)
+	}
+	_, err := connection.InterruptTurn(ctx, call)
+	return err
 }
 
 func (s *Service) prepareRespondChatPending(command domain.RespondChatPendingCommand) (domain.RespondChatPendingCommand, Session, error) {

@@ -6,8 +6,12 @@ const (
 
 	defaultGRPCInboundMessageBytes  = 4 * mib
 	defaultGRPCOutboundMessageBytes = 4 * mib
-	MaxGRPCMessageBytes             = 8 * mib
+	DefaultWorkflowPackageMaxBytes  = 10 * mib
+	defaultWorkflowGRPCMessageBytes = 12 * mib
+	MaxGRPCMessageBytes             = 16 * mib
 	hardCapGRPCMessageBytes         = MaxGRPCMessageBytes
+	hardCapWorkflowPackageMaxBytes  = 10 * mib
+	hardCapWorkflowGRPCMessageBytes = MaxGRPCMessageBytes
 
 	defaultEventLogEvents = 2_000
 	hardCapEventLogEvents = 5_000

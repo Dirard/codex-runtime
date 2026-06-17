@@ -266,7 +266,7 @@ func (s *Service) handleTurnStarted(notification appserver.Notification, connect
 	}
 	_, interruptAfterStart, interruptConnection := s.confirmTurnStartedOnce(taskID, turnID)
 	if interruptAfterStart {
-		s.sendInterruptAfterTurnStart(interruptConnection, taskID, turnID)
+		s.sendInterruptAfterTurnStart(interruptConnection, taskID, threadID, turnID)
 	}
 }
 

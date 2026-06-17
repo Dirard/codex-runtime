@@ -292,8 +292,9 @@ func processTestConfigWithProviderEnabled(t *testing.T, includeProvider bool) (*
 	cwd := t.TempDir()
 	codexHome := t.TempDir()
 	raw := config.Config{
-		CodexBinary: executable,
-		Listen:      config.DefaultListenAddress,
+		CodexBinary:        executable,
+		Listen:             config.DefaultListenAddress,
+		WorkflowStorageDir: t.TempDir(),
 		ClientAuthTokenSource: config.TokenSource{
 			File: tokenFile,
 		},
@@ -361,7 +362,7 @@ func executableExtension() string {
 func waitForStderrMessage(t *testing.T, chunks <-chan string, message string) {
 	t.Helper()
 
-	timer := time.NewTimer(time.Second)
+	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
 	var output strings.Builder
 	for {

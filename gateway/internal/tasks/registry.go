@@ -14,6 +14,7 @@ import (
 type interruptTarget struct {
 	taskID              string
 	sessionGroupID      string
+	threadID            string
 	turnID              string
 	connection          *appserver.Connection
 	stateEvent          domain.TaskEvent

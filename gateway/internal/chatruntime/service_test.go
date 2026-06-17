@@ -28,6 +28,43 @@ func TestStartChatRunRejectsEmptyPromptBeforeCodexCalls(t *testing.T) {
 	}
 }
 
+func TestRegisterSessionAddsAndRemovesDynamicSession(t *testing.T) {
+	service := newTestService(t, &fakeConnectionProvider{client: &fakeAppServerClient{}})
+	dynamic := Session{
+		Group:              testSessionGroup("sg-dynamic", "ws-dynamic"),
+		ConnectionProvider: &fakeConnectionProvider{client: &fakeAppServerClient{}},
+	}
+	if err := service.RegisterSession(dynamic); err != nil {
+		t.Fatalf("RegisterSession() error = %v", err)
+	}
+	if err := service.RegisterSession(dynamic); err == nil {
+		t.Fatal("duplicate RegisterSession() succeeded")
+	}
+	_, err := service.StartChatRun(context.Background(), domain.StartChatRunCommand{
+		SessionGroupID:  "sg-dynamic",
+		WorkspaceID:     "ws-dynamic",
+		Prompt:          " ",
+		ClientMessageID: "client-message-dynamic",
+		IdempotencyKey:  "idem-dynamic",
+	})
+	assertGatewayError(t, err, domain.GatewayErrorCodeInvalidArgument, domain.ReasonInvalidRequest)
+
+	if !service.UnregisterSession("sg-dynamic") {
+		t.Fatal("UnregisterSession() returned false for registered session")
+	}
+	if service.UnregisterSession("sg-dynamic") {
+		t.Fatal("second UnregisterSession() returned true")
+	}
+	_, err = service.StartChatRun(context.Background(), domain.StartChatRunCommand{
+		SessionGroupID:  "sg-dynamic",
+		WorkspaceID:     "ws-dynamic",
+		Prompt:          "hello",
+		ClientMessageID: "client-message-dynamic-2",
+		IdempotencyKey:  "idem-dynamic-2",
+	})
+	assertGatewayError(t, err, domain.GatewayErrorCodeNotFound, domain.ReasonUnknownSessionGroup)
+}
+
 func TestStartChatRunReleasesIdempotencyWhenSupervisorFailsBeforeSideEffect(t *testing.T) {
 	client := &fakeAppServerClient{
 		threadResults: []json.RawMessage{json.RawMessage(`{"threadId":"thread-1"}`)},
@@ -58,6 +95,35 @@ func TestStartChatRunReleasesIdempotencyWhenSupervisorFailsBeforeSideEffect(t *t
 	}
 	if response.ChatID != "thread-1" || response.RunID != "turn-1" || !response.FirstTurnAccepted {
 		t.Fatalf("StartChatRun() response = %#v, want accepted thread/run", response)
+	}
+}
+
+func TestStartChatRunRetriesStaleConnectionBeforeThreadStart(t *testing.T) {
+	staleClient := &fakeAppServerClient{
+		threadErrs: []error{appserver.ErrDispatcherClosed},
+	}
+	freshClient := &fakeAppServerClient{
+		threadResults: []json.RawMessage{json.RawMessage(`{"threadId":"thread-1"}`)},
+		turnResults:   []json.RawMessage{json.RawMessage(`{"turnId":"turn-1"}`)},
+	}
+	provider := &fakeConnectionProvider{clients: []*fakeAppServerClient{staleClient, freshClient}}
+	service := newTestService(t, provider)
+
+	response, err := service.StartChatRun(context.Background(), testStartChatRunCommand("idem-1"))
+	if err != nil {
+		t.Fatalf("StartChatRun() error = %v", err)
+	}
+	if response.ChatID != "thread-1" || response.RunID != "turn-1" || !response.FirstTurnAccepted {
+		t.Fatalf("StartChatRun() response = %#v, want accepted thread/run", response)
+	}
+	if provider.calls != 2 {
+		t.Fatalf("provider calls = %d, want stale connection and fresh connection", provider.calls)
+	}
+	if staleClient.threadCalls != 1 || staleClient.turnCalls != 0 {
+		t.Fatalf("stale client calls = thread %d turn %d, want thread failure only", staleClient.threadCalls, staleClient.turnCalls)
+	}
+	if freshClient.threadCalls != 1 || freshClient.turnCalls != 1 {
+		t.Fatalf("fresh client calls = thread %d turn %d, want accepted sequence", freshClient.threadCalls, freshClient.turnCalls)
 	}
 }
 
@@ -146,8 +212,78 @@ func TestStartChatRunRetryAfterTurnFailureDoesNotDuplicateCodexCalls(t *testing.
 	assertGatewayError(t, err, domain.GatewayErrorCodeUnavailable, domain.ReasonDispatcherUnavailable)
 	_, err = service.StartChatRun(context.Background(), command)
 	assertGatewayError(t, err, domain.GatewayErrorCodeUnknown, domain.ReasonIdempotencyResultUnavailable)
-	if client.threadCalls != 1 || client.turnCalls != 1 {
-		t.Fatalf("Codex calls = thread %d turn %d, want no duplicate after uncertain failure", client.threadCalls, client.turnCalls)
+	if client.threadCalls != 1 || client.turnCalls != 1 || client.readCalls != startChatTurnRecoveryAttempts {
+		t.Fatalf("Codex calls = thread %d turn %d read %d, want bounded recovery reads and no duplicate turn/start", client.threadCalls, client.turnCalls, client.readCalls)
+	}
+}
+
+func TestStartChatRunRecoversAcceptedTurnAfterStartTurnTransportFailure(t *testing.T) {
+	client := &fakeAppServerClient{
+		threadResults: []json.RawMessage{json.RawMessage(`{"threadId":"thread-1"}`)},
+		turnErrs:      []error{appserver.ErrDispatcherClosed},
+		readResults: []json.RawMessage{json.RawMessage(`{
+			"thread": {
+				"id": "thread-1",
+				"status": "active",
+				"cwd": "D:/workspace",
+				"turns": [
+					{"id": "turn-1", "status": "inProgress"}
+				]
+			}
+		}`)},
+	}
+	provider := &fakeConnectionProvider{client: client}
+	store := chatstate.NewStore(chatstate.StoreOptions{Epoch: "epoch-1"})
+	service := newTestServiceWithStore(t, provider, store)
+	command := testStartChatRunCommand("idem-1")
+
+	response, err := service.StartChatRun(context.Background(), command)
+	if err != nil {
+		t.Fatalf("StartChatRun() error = %v", err)
+	}
+	if response.ChatID != "thread-1" || response.RunID != "turn-1" || !response.FirstTurnAccepted {
+		t.Fatalf("StartChatRun() response = %#v, want recovered accepted turn", response)
+	}
+	active, ok := store.ActiveRun(chatstate.Scope{SessionGroupID: "sg-1", WorkspaceID: "ws-1", ChatID: "thread-1"})
+	if !ok || active.RunID != "turn-1" || active.State != chatstate.RunStateRunning {
+		t.Fatalf("ActiveRun() = (%#v, %t), want recovered running turn", active, ok)
+	}
+	if provider.calls != 2 || client.threadCalls != 1 || client.turnCalls != 1 || client.readCalls != 1 {
+		t.Fatalf("Codex calls = provider %d thread %d turn %d read %d, want start plus one recovery read", provider.calls, client.threadCalls, client.turnCalls, client.readCalls)
+	}
+}
+
+func TestStartChatRunRetriesTurnStartAfterRecoveryConfirmsEmptyThread(t *testing.T) {
+	emptyThread := json.RawMessage(`{
+		"thread": {
+			"id": "thread-1",
+			"status": "idle",
+			"cwd": "D:/workspace",
+			"turns": []
+		}
+	}`)
+	client := &fakeAppServerClient{
+		threadResults: []json.RawMessage{json.RawMessage(`{"threadId":"thread-1"}`)},
+		turnErrs:      []error{appserver.ErrDispatcherClosed},
+		turnResults: []json.RawMessage{
+			nil,
+			json.RawMessage(`{"turnId":"turn-1"}`),
+		},
+		readResults: []json.RawMessage{emptyThread, emptyThread, emptyThread},
+	}
+	provider := &fakeConnectionProvider{client: client}
+	store := chatstate.NewStore(chatstate.StoreOptions{Epoch: "epoch-1"})
+	service := newTestServiceWithStore(t, provider, store)
+
+	response, err := service.StartChatRun(context.Background(), testStartChatRunCommand("idem-1"))
+	if err != nil {
+		t.Fatalf("StartChatRun() error = %v", err)
+	}
+	if response.ChatID != "thread-1" || response.RunID != "turn-1" || !response.FirstTurnAccepted {
+		t.Fatalf("StartChatRun() response = %#v, want retry-accepted turn", response)
+	}
+	if provider.calls != 5 || client.threadCalls != 1 || client.turnCalls != 2 || client.readCalls != startChatTurnRecoveryAttempts {
+		t.Fatalf("Codex calls = provider %d thread %d turn %d read %d, want empty recovery reads and one turn/start retry", provider.calls, client.threadCalls, client.turnCalls, client.readCalls)
 	}
 }
 
@@ -1757,7 +1893,7 @@ func TestInterruptChatRunSendsCodexInterruptAndKeepsRunNonTerminal(t *testing.T)
 	if !first.InterruptSent || first.AlreadyInterrupting || first.Status.CurrentRunLifecycle != domain.ChatTurnLifecycleInProgress {
 		t.Fatalf("InterruptChatRun() = %#v, want interrupt sent and in-progress status", first)
 	}
-	if client.interruptCalls != 1 || len(client.interruptInputs) != 1 || client.interruptInputs[0].TurnID != "turn-1" {
+	if client.interruptCalls != 1 || len(client.interruptInputs) != 1 || client.interruptInputs[0].ThreadID != "thread-1" || client.interruptInputs[0].TurnID != "turn-1" {
 		t.Fatalf("interrupt calls = %d inputs = %#v, want one turn interrupt", client.interruptCalls, client.interruptInputs)
 	}
 	active, ok := store.ActiveRun(scope.Scope)
@@ -1774,6 +1910,75 @@ func TestInterruptChatRunSendsCodexInterruptAndKeepsRunNonTerminal(t *testing.T)
 	}
 	if client.interruptCalls != 1 {
 		t.Fatalf("interrupt calls after retry = %d, want no duplicate interrupt", client.interruptCalls)
+	}
+}
+
+func TestInterruptChatRunUsesSendOnlyInterruptWhenAvailable(t *testing.T) {
+	store := chatstate.NewStore(chatstate.StoreOptions{Epoch: "epoch-1"})
+	scope := startActiveRun(t, store)
+	client := &fakeAppServerClient{
+		sendInterruptSupported: true,
+	}
+	service := newTestServiceWithStore(t, &fakeConnectionProvider{client: client}, store)
+
+	response, err := service.InterruptChatRun(context.Background(), domain.InterruptChatRunCommand{
+		SessionGroupID:  "sg-1",
+		WorkspaceID:     "ws-1",
+		ChatID:          "thread-1",
+		RunID:           "turn-1",
+		ClientRequestID: "interrupt-1",
+		IdempotencyKey:  "idem-interrupt-1",
+	})
+	if err != nil {
+		t.Fatalf("InterruptChatRun() error = %v", err)
+	}
+	if !response.InterruptSent || response.AlreadyInterrupting {
+		t.Fatalf("InterruptChatRun() = %#v, want send-only interrupt accepted", response)
+	}
+	if client.sendInterruptCalls != 1 || client.interruptCalls != 0 {
+		t.Fatalf("send/regular interrupt calls = %d/%d, want send-only path", client.sendInterruptCalls, client.interruptCalls)
+	}
+	if len(client.sendInterruptInputs) != 1 || client.sendInterruptInputs[0].ThreadID != "thread-1" || client.sendInterruptInputs[0].TurnID != "turn-1" {
+		t.Fatalf("send interrupt inputs = %#v, want thread and turn ids", client.sendInterruptInputs)
+	}
+	active, ok := store.ActiveRun(scope.Scope)
+	if !ok || active.State != chatstate.RunStateInterrupting {
+		t.Fatalf("ActiveRun() after send-only interrupt = (%#v, %t), want interrupting active run", active, ok)
+	}
+}
+
+func TestInterruptChatRunRetriesStaleConnectionBeforeMarkingInterrupting(t *testing.T) {
+	store := chatstate.NewStore(chatstate.StoreOptions{Epoch: "epoch-1"})
+	scope := startActiveRun(t, store)
+	staleClient := &fakeAppServerClient{
+		interruptErrs: []error{appserver.ErrDispatcherClosed},
+	}
+	freshClient := &fakeAppServerClient{
+		interruptResults: []json.RawMessage{json.RawMessage(`{}`)},
+	}
+	provider := &fakeConnectionProvider{clients: []*fakeAppServerClient{staleClient, freshClient}}
+	service := newTestServiceWithStore(t, provider, store)
+
+	response, err := service.InterruptChatRun(context.Background(), domain.InterruptChatRunCommand{
+		SessionGroupID:  "sg-1",
+		WorkspaceID:     "ws-1",
+		ChatID:          "thread-1",
+		RunID:           "turn-1",
+		ClientRequestID: "interrupt-1",
+		IdempotencyKey:  "idem-interrupt-1",
+	})
+	if err != nil {
+		t.Fatalf("InterruptChatRun() error = %v", err)
+	}
+	if !response.InterruptSent || response.AlreadyInterrupting {
+		t.Fatalf("InterruptChatRun() = %#v, want interrupt sent after retry", response)
+	}
+	if provider.calls != 2 || staleClient.interruptCalls != 1 || freshClient.interruptCalls != 1 {
+		t.Fatalf("provider/stale/fresh interrupt calls = %d/%d/%d, want 2/1/1", provider.calls, staleClient.interruptCalls, freshClient.interruptCalls)
+	}
+	active, ok := store.ActiveRun(scope.Scope)
+	if !ok || active.State != chatstate.RunStateInterrupting {
+		t.Fatalf("ActiveRun() after retrying interrupt = (%#v, %t), want interrupting active run", active, ok)
 	}
 }
 
@@ -2068,9 +2273,10 @@ func tamperHistoryCursorChatID(t *testing.T, cursor string, chatID string) strin
 }
 
 type fakeConnectionProvider struct {
-	client *fakeAppServerClient
-	err    error
-	calls  int
+	client  *fakeAppServerClient
+	clients []*fakeAppServerClient
+	err     error
+	calls   int
 }
 
 func (p *fakeConnectionProvider) Connection(context.Context) (AppServerClient, error) {
@@ -2078,45 +2284,56 @@ func (p *fakeConnectionProvider) Connection(context.Context) (AppServerClient, e
 	if p.err != nil {
 		return nil, p.err
 	}
+	if len(p.clients) > 0 {
+		index := p.calls - 1
+		if index < len(p.clients) {
+			return p.clients[index], nil
+		}
+		return p.clients[len(p.clients)-1], nil
+	}
 	return p.client, nil
 }
 
 type fakeAppServerClient struct {
-	sessionGroupID       string
-	forwardedHook        appserver.ForwardedServerRequestHook
-	threadResults        []json.RawMessage
-	threadErrs           []error
-	resumeResults        []json.RawMessage
-	resumeErrs           []error
-	readResults          []json.RawMessage
-	readErrs             []error
-	turnsResults         []json.RawMessage
-	turnsErrs            []error
-	turnResults          []json.RawMessage
-	turnErrs             []error
-	interruptResults     []json.RawMessage
-	interruptErrs        []error
-	respondErrs          []error
-	respondErrorErrs     []error
-	respondHook          func()
-	notifications        chan appserver.Notification
-	threadCalls          int
-	resumeCalls          int
-	readCalls            int
-	turnsCalls           int
-	turnCalls            int
-	interruptCalls       int
-	respondCalls         int
-	respondErrorCalls    int
-	turnInputs           [][]appserver.UserInputText
-	readInputs           []appserver.ThreadReadCall
-	turnsInputs          []appserver.ThreadTurnsListCall
-	interruptInputs      []appserver.TurnInterruptCall
-	respondRequests      []appserver.ServerRequest
-	respondPayloads      []any
-	respondErrorRequests []appserver.ServerRequest
-	respondErrorCodes    []int
-	respondErrorMessages []string
+	sessionGroupID         string
+	forwardedHook          appserver.ForwardedServerRequestHook
+	threadResults          []json.RawMessage
+	threadErrs             []error
+	resumeResults          []json.RawMessage
+	resumeErrs             []error
+	readResults            []json.RawMessage
+	readErrs               []error
+	turnsResults           []json.RawMessage
+	turnsErrs              []error
+	turnResults            []json.RawMessage
+	turnErrs               []error
+	interruptResults       []json.RawMessage
+	interruptErrs          []error
+	sendInterruptErrs      []error
+	respondErrs            []error
+	respondErrorErrs       []error
+	respondHook            func()
+	notifications          chan appserver.Notification
+	sendInterruptSupported bool
+	threadCalls            int
+	resumeCalls            int
+	readCalls              int
+	turnsCalls             int
+	turnCalls              int
+	interruptCalls         int
+	sendInterruptCalls     int
+	respondCalls           int
+	respondErrorCalls      int
+	turnInputs             [][]appserver.UserInputText
+	readInputs             []appserver.ThreadReadCall
+	turnsInputs            []appserver.ThreadTurnsListCall
+	interruptInputs        []appserver.TurnInterruptCall
+	sendInterruptInputs    []appserver.TurnInterruptCall
+	respondRequests        []appserver.ServerRequest
+	respondPayloads        []any
+	respondErrorRequests   []appserver.ServerRequest
+	respondErrorCodes      []int
+	respondErrorMessages   []string
 }
 
 func (c *fakeAppServerClient) StartThread(context.Context, appserver.ThreadStartCall) (json.RawMessage, error) {
@@ -2193,6 +2410,20 @@ func (c *fakeAppServerClient) InterruptTurn(_ context.Context, call appserver.Tu
 		return c.interruptResults[index], nil
 	}
 	return nil, errors.New("unexpected turn/interrupt call")
+}
+
+func (c *fakeAppServerClient) SendInterruptTurn(ctx context.Context, call appserver.TurnInterruptCall) error {
+	if !c.sendInterruptSupported {
+		_, err := c.InterruptTurn(ctx, call)
+		return err
+	}
+	c.sendInterruptCalls++
+	c.sendInterruptInputs = append(c.sendInterruptInputs, call)
+	index := c.sendInterruptCalls - 1
+	if index < len(c.sendInterruptErrs) && c.sendInterruptErrs[index] != nil {
+		return c.sendInterruptErrs[index]
+	}
+	return nil
 }
 
 func (c *fakeAppServerClient) RespondServerRequest(_ context.Context, request appserver.ServerRequest, payload any, _ time.Duration) error {

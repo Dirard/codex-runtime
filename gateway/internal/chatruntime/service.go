@@ -26,6 +26,11 @@ const (
 	defaultTurnStartTimeout       = 30 * time.Second
 	defaultPendingResponseTimeout = 10 * time.Second
 	defaultTurnInterruptTimeout   = 10 * time.Second
+
+	startChatFreshConnectionAttempts   = 3
+	startChatFreshConnectionRetryDelay = 200 * time.Millisecond
+	startChatTurnRecoveryAttempts      = 3
+	startChatTurnRecoveryDelay         = 200 * time.Millisecond
 )
 
 type AppServerClient interface {
@@ -76,6 +81,7 @@ type ServiceOptions struct {
 
 type Service struct {
 	mu                     sync.Mutex
+	sessionsMu             sync.RWMutex
 	sessions               map[string]Session
 	store                  *chatstate.Store
 	pendingRecords         map[string]*chatPendingRecord
@@ -128,14 +134,8 @@ func NewService(sessions []Session, options ServiceOptions) (*Service, error) {
 		cursorSigningKey:       cursorSigningKey,
 	}
 	for _, session := range sessions {
-		if session.Group.SessionGroupID == "" {
-			return nil, fmt.Errorf("session group id is required")
-		}
-		if session.Group.WorkspaceID == "" {
-			return nil, fmt.Errorf("workspace id is required for session group %q", session.Group.SessionGroupID)
-		}
-		if session.ConnectionProvider == nil {
-			return nil, fmt.Errorf("connection provider is required for session group %q", session.Group.SessionGroupID)
+		if err := validateSession(session); err != nil {
+			return nil, err
 		}
 		if _, exists := service.sessions[session.Group.SessionGroupID]; exists {
 			return nil, fmt.Errorf("duplicate session group %q", session.Group.SessionGroupID)
@@ -143,6 +143,140 @@ func NewService(sessions []Session, options ServiceOptions) (*Service, error) {
 		service.sessions[session.Group.SessionGroupID] = session
 	}
 	return service, nil
+}
+
+func (s *Service) RegisterSession(session Session) error {
+	if s == nil {
+		return fmt.Errorf("chat runtime service is required")
+	}
+	if err := validateSession(session); err != nil {
+		return err
+	}
+	s.sessionsMu.Lock()
+	defer s.sessionsMu.Unlock()
+	if _, exists := s.sessions[session.Group.SessionGroupID]; exists {
+		return fmt.Errorf("duplicate session group %q", session.Group.SessionGroupID)
+	}
+	s.sessions[session.Group.SessionGroupID] = session
+	return nil
+}
+
+func (s *Service) UnregisterSession(sessionGroupID string) bool {
+	if s == nil || sessionGroupID == "" {
+		return false
+	}
+	s.sessionsMu.Lock()
+	defer s.sessionsMu.Unlock()
+	if _, exists := s.sessions[sessionGroupID]; !exists {
+		return false
+	}
+	delete(s.sessions, sessionGroupID)
+	return true
+}
+
+func validateSession(session Session) error {
+	if session.Group.SessionGroupID == "" {
+		return fmt.Errorf("session group id is required")
+	}
+	if session.Group.WorkspaceID == "" {
+		return fmt.Errorf("workspace id is required for session group %q", session.Group.SessionGroupID)
+	}
+	if session.ConnectionProvider == nil {
+		return fmt.Errorf("connection provider is required for session group %q", session.Group.SessionGroupID)
+	}
+	return nil
+}
+
+func waitForFreshConnectionStartRetry(ctx context.Context) error {
+	timer := time.NewTimer(startChatFreshConnectionRetryDelay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func waitForStartChatTurnRecovery(ctx context.Context) error {
+	timer := time.NewTimer(startChatTurnRecoveryDelay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func runStateFromCodexTurnStatus(status string) (chatstate.RunState, bool) {
+	switch turnLifecycleFromCodex(status) {
+	case domain.ChatTurnLifecycleInProgress:
+		return chatstate.RunStateRunning, true
+	case domain.ChatTurnLifecycleCompleted:
+		return chatstate.RunStateCompleted, true
+	case domain.ChatTurnLifecycleInterrupted:
+		return chatstate.RunStateInterrupted, true
+	case domain.ChatTurnLifecycleFailed:
+		return chatstate.RunStateFailed, true
+	default:
+		return "", false
+	}
+}
+
+func terminalRunState(state chatstate.RunState) bool {
+	switch state {
+	case chatstate.RunStateCompleted, chatstate.RunStateFailed, chatstate.RunStateInterrupted:
+		return true
+	default:
+		return false
+	}
+}
+
+type startTurnRecovery struct {
+	runID          string
+	state          chatstate.RunState
+	foundTurn      bool
+	confirmedEmpty bool
+}
+
+func (s *Service) recoverStartedTurnAfterStartTurnError(ctx context.Context, session Session, chatID string) startTurnRecovery {
+	confirmedEmpty := false
+	for attempt := 0; attempt < startChatTurnRecoveryAttempts; attempt++ {
+		if attempt > 0 {
+			if err := waitForStartChatTurnRecovery(ctx); err != nil {
+				return startTurnRecovery{}
+			}
+		}
+		thread, err := s.readCodexThread(ctx, session, chatID, true)
+		if err != nil {
+			continue
+		}
+		if len(thread.Turns) == 0 {
+			confirmedEmpty = true
+			continue
+		}
+		latest := thread.Turns[len(thread.Turns)-1]
+		if latest.ID == "" {
+			continue
+		}
+		state, ok := runStateFromCodexTurnStatus(latest.Status)
+		if !ok {
+			continue
+		}
+		return startTurnRecovery{runID: latest.ID, state: state, foundTurn: true}
+	}
+	return startTurnRecovery{confirmedEmpty: confirmedEmpty}
+}
+
+func (s *Service) sessionByID(sessionGroupID string) (Session, bool) {
+	if s == nil {
+		return Session{}, false
+	}
+	s.sessionsMu.RLock()
+	defer s.sessionsMu.RUnlock()
+	session, ok := s.sessions[sessionGroupID]
+	return session, ok
 }
 
 func (s *Service) StartChatRun(ctx context.Context, command domain.StartChatRunCommand) (domain.StartChatRunResponse, error) {
@@ -177,40 +311,70 @@ func (s *Service) StartChatRun(ctx context.Context, command domain.StartChatRunC
 		}
 	}()
 
-	connection, err := session.ConnectionProvider.Connection(ctx)
-	if err != nil {
-		_ = s.store.ReleaseIdempotency(idempotencyScope)
-		return domain.StartChatRunResponse{}, appServerCallError(err, command.SessionGroupID, command.ClientMessageID, "")
-	}
-	if connection == nil {
-		_ = s.store.ReleaseIdempotency(idempotencyScope)
-		return domain.StartChatRunResponse{}, &domain.GatewayError{
-			Code: domain.GatewayErrorCodeInternal,
-			Details: domain.GatewayErrorDetails{
-				Reason:          domain.ReasonInternalGatewayError,
-				DisplayMessage:  "internal gateway error",
-				SessionGroupID:  command.SessionGroupID,
-				ClientMessageID: command.ClientMessageID,
-			},
+	var connection AppServerClient
+	var threadResult json.RawMessage
+	threadStartAttempted := false
+	for attempt := 0; attempt < startChatFreshConnectionAttempts; attempt++ {
+		connection, err = session.ConnectionProvider.Connection(ctx)
+		if err != nil {
+			if attempt+1 < startChatFreshConnectionAttempts && retryableFreshConnectionStartError(err) {
+				if err := waitForFreshConnectionStartRetry(ctx); err != nil {
+					if !threadStartAttempted {
+						_ = s.store.ReleaseIdempotency(idempotencyScope)
+					}
+					return domain.StartChatRunResponse{}, appServerCallError(err, command.SessionGroupID, command.ClientMessageID, "")
+				}
+				continue
+			}
+			if !threadStartAttempted {
+				_ = s.store.ReleaseIdempotency(idempotencyScope)
+			}
+			return domain.StartChatRunResponse{}, appServerCallError(err, command.SessionGroupID, command.ClientMessageID, "")
 		}
-	}
-	s.configureConnection(connection)
-	if err := callerErrorFromContext(ctx, command.SessionGroupID, command.ClientMessageID); err != nil {
-		_ = s.store.ReleaseIdempotency(idempotencyScope)
-		return domain.StartChatRunResponse{}, err
-	}
+		if connection == nil {
+			if !threadStartAttempted {
+				_ = s.store.ReleaseIdempotency(idempotencyScope)
+			}
+			return domain.StartChatRunResponse{}, &domain.GatewayError{
+				Code: domain.GatewayErrorCodeInternal,
+				Details: domain.GatewayErrorDetails{
+					Reason:          domain.ReasonInternalGatewayError,
+					DisplayMessage:  "internal gateway error",
+					SessionGroupID:  command.SessionGroupID,
+					ClientMessageID: command.ClientMessageID,
+				},
+			}
+		}
+		s.configureConnection(connection)
+		if err := callerErrorFromContext(ctx, command.SessionGroupID, command.ClientMessageID); err != nil {
+			if !threadStartAttempted {
+				_ = s.store.ReleaseIdempotency(idempotencyScope)
+			}
+			return domain.StartChatRunResponse{}, err
+		}
 
-	threadResult, err := connection.StartThread(ctx, appserver.ThreadStartCall{
-		Timeout: s.threadCallTimeout,
-	})
-	if err != nil {
+		threadStartAttempted = true
+		threadResult, err = connection.StartThread(ctx, appserver.ThreadStartCall{
+			Timeout: s.threadCallTimeout,
+		})
+		if err == nil {
+			break
+		}
+		if attempt+1 < startChatFreshConnectionAttempts && retryableFreshConnectionStartError(err) {
+			if err := waitForFreshConnectionStartRetry(ctx); err != nil {
+				if !threadStartAttempted {
+					_ = s.store.ReleaseIdempotency(idempotencyScope)
+				}
+				return domain.StartChatRunResponse{}, appServerCallError(err, command.SessionGroupID, command.ClientMessageID, "")
+			}
+			continue
+		}
 		return domain.StartChatRunResponse{}, appServerCallError(err, command.SessionGroupID, command.ClientMessageID, "")
 	}
 	chatID := appserver.ParseThreadID(threadResult)
 	if chatID == "" {
 		return domain.StartChatRunResponse{}, protocolMismatch(command.SessionGroupID, "")
 	}
-
 	turnResult, err := connection.StartTurn(ctx, appserver.TurnStartCall{
 		ThreadID:            chatID,
 		ClientUserMessageID: command.ClientMessageID,
@@ -219,12 +383,53 @@ func (s *Service) StartChatRun(ctx context.Context, command domain.StartChatRunC
 		},
 		Timeout: s.turnStartTimeout,
 	})
+	var runID string
+	runState := chatstate.RunStateRunning
 	if err != nil {
-		return domain.StartChatRunResponse{}, appServerCallError(err, command.SessionGroupID, command.ClientMessageID, chatID)
-	}
-	runID := appserver.ParseTurnID(turnResult)
-	if runID == "" {
-		return domain.StartChatRunResponse{}, protocolMismatch(command.SessionGroupID, chatID)
+		startTurnErr := err
+		recovery := s.recoverStartedTurnAfterStartTurnError(ctx, session, chatID)
+		if !recovery.foundTurn && recovery.confirmedEmpty {
+			retryConnection, retryErr := session.ConnectionProvider.Connection(ctx)
+			if retryErr != nil {
+				startTurnErr = retryErr
+			} else if retryConnection == nil {
+				return domain.StartChatRunResponse{}, internalGatewayError(command.SessionGroupID, command.ClientMessageID, chatID)
+			} else {
+				s.configureConnection(retryConnection)
+				if err := callerErrorFromContext(ctx, command.SessionGroupID, command.ClientMessageID); err != nil {
+					return domain.StartChatRunResponse{}, err
+				}
+				turnResult, retryErr = retryConnection.StartTurn(ctx, appserver.TurnStartCall{
+					ThreadID:            chatID,
+					ClientUserMessageID: command.ClientMessageID,
+					Input: []appserver.UserInputText{
+						appserver.NewUserInputText(envelope),
+					},
+					Timeout: s.turnStartTimeout,
+				})
+				if retryErr != nil {
+					startTurnErr = retryErr
+					recovery = s.recoverStartedTurnAfterStartTurnError(ctx, session, chatID)
+				} else {
+					runID = appserver.ParseTurnID(turnResult)
+					if runID == "" {
+						return domain.StartChatRunResponse{}, protocolMismatch(command.SessionGroupID, chatID)
+					}
+				}
+			}
+		}
+		if runID == "" {
+			if !recovery.foundTurn {
+				return domain.StartChatRunResponse{}, appServerCallError(startTurnErr, command.SessionGroupID, command.ClientMessageID, chatID)
+			}
+			runID = recovery.runID
+			runState = recovery.state
+		}
+	} else {
+		runID = appserver.ParseTurnID(turnResult)
+		if runID == "" {
+			return domain.StartChatRunResponse{}, protocolMismatch(command.SessionGroupID, chatID)
+		}
 	}
 
 	runScope := chatstate.RunScope{
@@ -239,17 +444,22 @@ func (s *Service) StartChatRun(ctx context.Context, command domain.StartChatRunC
 		return domain.StartChatRunResponse{}, err
 	}
 	releaseActiveRunReservation = false
-	if _, err := s.store.UpdateRunState(runScope, chatstate.RunStateRunning); err != nil {
+	if _, err := s.store.UpdateRunState(runScope, runState); err != nil {
 		return domain.StartChatRunResponse{}, err
 	}
 	event, err := s.store.AppendEvent(chatstate.EventInput{
 		RunScope:  runScope,
 		Kind:      "status",
-		State:     string(chatstate.RunStateRunning),
+		State:     string(runState),
 		SizeBytes: int64(len(chatID) + len(runID)),
 	})
 	if err != nil {
 		return domain.StartChatRunResponse{}, err
+	}
+	if terminalRunState(runState) {
+		if _, err := s.store.CompleteRun(runScope, runState); err != nil {
+			return domain.StartChatRunResponse{}, err
+		}
 	}
 	response := domain.StartChatRunResponse{
 		ChatID:            chatID,
@@ -264,7 +474,7 @@ func (s *Service) StartChatRun(ctx context.Context, command domain.StartChatRunC
 	if _, err := s.store.CompleteIdempotency(idempotencyScope, chatstate.IdempotencyResultRef{
 		ChatID:      response.ChatID,
 		RunID:       response.RunID,
-		Status:      string(chatstate.RunStateRunning),
+		Status:      string(runState),
 		LastEventID: response.LastEventID,
 		EventCursor: response.EventCursor,
 	}); err != nil {
@@ -599,7 +809,7 @@ func chatHistoryUnavailableResponse(lookup domain.GetChatCommand, message string
 }
 
 func (s *Service) prepareStartChatRun(command domain.StartChatRunCommand) (domain.StartChatRunCommand, Session, string, error) {
-	session, ok := s.sessions[command.SessionGroupID]
+	session, ok := s.sessionByID(command.SessionGroupID)
 	if !ok {
 		return domain.StartChatRunCommand{}, Session{}, "", unknownSession(command.SessionGroupID)
 	}
@@ -624,7 +834,7 @@ func (s *Service) prepareStartChatRun(command domain.StartChatRunCommand) (domai
 }
 
 func (s *Service) prepareChatLookup(sessionGroupID string, workspaceID string, chatID string) (domain.GetChatCommand, Session, error) {
-	session, ok := s.sessions[sessionGroupID]
+	session, ok := s.sessionByID(sessionGroupID)
 	if !ok {
 		return domain.GetChatCommand{}, Session{}, unknownSession(sessionGroupID)
 	}

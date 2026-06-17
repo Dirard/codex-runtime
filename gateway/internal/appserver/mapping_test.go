@@ -114,6 +114,17 @@ func TestResumeAndTurnStartMappingsDoNotCarryRuntimeOverrides(t *testing.T) {
 	}
 }
 
+func TestTurnInterruptParamsIncludeThreadAndTurnID(t *testing.T) {
+	got := mapFromJSON(t, NewTurnInterruptParams("thread-1", "turn-1"))
+	want := map[string]interface{}{
+		"threadId": "thread-1",
+		"turnId":   "turn-1",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("TurnInterruptParams JSON = %#v, want %#v", got, want)
+	}
+}
+
 func TestApprovalServerRequestResponsePayloads(t *testing.T) {
 	command, ok := NewCommandApprovalResponsePayload(domain.ApprovalWireDecisionAcceptForSession)
 	if !ok {

@@ -21,6 +21,7 @@ type ServerOptions struct {
 	Services               ControlServices
 	ChatRuntimeDisabled    bool
 	ChatRuntimeService     pb.ChatRuntimeServiceServer
+	WorkflowRuntimeService pb.WorkflowRuntimeServiceServer
 	ChatRuntimeSupervisors []appserver.SupervisorStatusProvider
 }
 
@@ -61,8 +62,9 @@ func NewServerFromConfigWithOptions(validated *config.ValidatedConfig, tasks Tas
 			Tasks:         tasks,
 			Pending:       pending,
 		},
-		ChatRuntimeDisabled: !validated.ChatRuntimeEnabled(),
-		ChatRuntimeService:  extra.ChatRuntimeService,
+		ChatRuntimeDisabled:    !validated.ChatRuntimeEnabled(),
+		ChatRuntimeService:     extra.ChatRuntimeService,
+		WorkflowRuntimeService: extra.WorkflowRuntimeService,
 	}
 	if extra.ChatRuntimeDisabled {
 		options.ChatRuntimeDisabled = true
@@ -112,6 +114,11 @@ func NewServer(options ServerOptions) (*Server, error) {
 		chatRuntime = newChatRuntimeService(!options.ChatRuntimeDisabled, options.MaxRecvMessageBytes)
 	}
 	pb.RegisterChatRuntimeServiceServer(grpcServer, chatRuntime)
+	workflowRuntime := options.WorkflowRuntimeService
+	if workflowRuntime == nil {
+		workflowRuntime = newWorkflowRuntimeService()
+	}
+	pb.RegisterWorkflowRuntimeServiceServer(grpcServer, workflowRuntime)
 	healthpb.RegisterHealthServer(grpcServer, newGatewayHealthServer(options.ChatRuntimeDisabled, options.ChatRuntimeSupervisors))
 	return &Server{
 		listener:            listener,
@@ -163,6 +170,17 @@ func effectiveMessageLimitsFromConfig(validated *config.ValidatedConfig) (int, i
 	}
 	maxRecvMessageBytes := 0
 	maxSendMessageBytes := 0
+	if validated.WorkflowGRPCMessageBytes > 0 {
+		workflowLimit, err := int64ToPositiveInt(validated.WorkflowGRPCMessageBytes, "workflow gRPC message limit")
+		if err != nil {
+			return 0, 0, err
+		}
+		if workflowLimit > config.MaxGRPCMessageBytes {
+			return 0, 0, fmt.Errorf("workflow gRPC message limit exceeds hard cap")
+		}
+		maxRecvMessageBytes = max(maxRecvMessageBytes, workflowLimit)
+		maxSendMessageBytes = max(maxSendMessageBytes, workflowLimit)
+	}
 	for _, group := range validated.SessionGroups {
 		if group.GRPCLimits.InboundMessageBytes <= 0 {
 			return 0, 0, fmt.Errorf("session group %q inbound gRPC message limit must be positive", group.SessionGroupID)

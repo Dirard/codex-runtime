@@ -98,9 +98,10 @@ type TurnStartCall struct {
 }
 
 type TurnInterruptCall struct {
-	TurnID  string
-	TaskID  string
-	Timeout time.Duration
+	ThreadID string
+	TurnID   string
+	TaskID   string
+	Timeout  time.Duration
 }
 
 type Connection struct {
@@ -266,11 +267,22 @@ func (c *Connection) StartTurn(ctx context.Context, call TurnStartCall) (json.Ra
 }
 
 func (c *Connection) InterruptTurn(ctx context.Context, call TurnInterruptCall) (json.RawMessage, error) {
-	return c.dispatcher.Call(ctx, "turn/interrupt", NewTurnInterruptParams(call.TurnID), turnInterruptTimeout(call.Timeout), CallMetadata{
+	return c.dispatcher.Call(ctx, "turn/interrupt", NewTurnInterruptParams(call.ThreadID, call.TurnID), turnInterruptTimeout(call.Timeout), CallMetadata{
 		TaskID:           call.TaskID,
 		SessionGroupID:   c.session.SessionGroupID,
+		ExpectedThreadID: call.ThreadID,
 		ExpectedTurnID:   call.TurnID,
 		CloseOnUncertain: true,
+	})
+}
+
+func (c *Connection) SendInterruptTurn(ctx context.Context, call TurnInterruptCall) error {
+	return c.dispatcher.SendRequest(ctx, "turn/interrupt", NewTurnInterruptParams(call.ThreadID, call.TurnID), turnInterruptTimeout(call.Timeout), CallMetadata{
+		TaskID:           call.TaskID,
+		SessionGroupID:   c.session.SessionGroupID,
+		ExpectedThreadID: call.ThreadID,
+		ExpectedTurnID:   call.TurnID,
+		CloseOnUncertain: false,
 	})
 }
 

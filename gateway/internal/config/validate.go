@@ -26,6 +26,24 @@ func (c *Config) Validate() (*ValidatedConfig, error) {
 	if err != nil {
 		return nil, err
 	}
+	workflowStorageDir, err := canonicalizeStorageDir(c.WorkflowStorageDir, "workflow_storage_dir")
+	if err != nil {
+		return nil, err
+	}
+	workflowPackageMaxBytes := c.WorkflowPackageMaxBytes
+	if workflowPackageMaxBytes == 0 {
+		workflowPackageMaxBytes = DefaultWorkflowPackageMaxBytes
+	}
+	if workflowPackageMaxBytes <= 0 || workflowPackageMaxBytes > hardCapWorkflowPackageMaxBytes {
+		return nil, fmt.Errorf("workflow_package_max_bytes is out of bounds")
+	}
+	workflowGRPCMessageBytes := c.WorkflowGRPCMessageBytes
+	if workflowGRPCMessageBytes == 0 {
+		workflowGRPCMessageBytes = defaultWorkflowGRPCMessageBytes
+	}
+	if workflowGRPCMessageBytes < workflowPackageMaxBytes || workflowGRPCMessageBytes > hardCapWorkflowGRPCMessageBytes {
+		return nil, fmt.Errorf("workflow_grpc_message_bytes must cover workflow package limit and stay within hard cap")
+	}
 
 	clientAuthToken, err := validateAndLoadToken(c.ClientAuthTokenSource)
 	if err != nil {
@@ -60,6 +78,9 @@ func (c *Config) Validate() (*ValidatedConfig, error) {
 		Listen:                   listen,
 		StrictSchemaVerification: c.StrictSchemaVerification,
 		ChatRuntime:              chatRuntime,
+		WorkflowStorageDir:       workflowStorageDir,
+		WorkflowPackageMaxBytes:  workflowPackageMaxBytes,
+		WorkflowGRPCMessageBytes: workflowGRPCMessageBytes,
 		ChildEnvAllowlist:        append([]string(nil), childEnvPolicy.allowlist...),
 		CredentialProviders:      providers,
 		SessionGroups:            groups,

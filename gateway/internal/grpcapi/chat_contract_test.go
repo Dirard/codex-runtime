@@ -19,8 +19,15 @@ func TestChatRuntimeServiceContractShape(t *testing.T) {
 	if chat == nil {
 		t.Fatal("ChatRuntimeService service missing")
 	}
+	workflow := services.ByName("WorkflowRuntimeService")
+	if workflow == nil {
+		t.Fatal("WorkflowRuntimeService service missing")
+	}
 	if control.FullName() == chat.FullName() {
 		t.Fatalf("chat runtime service must be separate from task service: %s", chat.FullName())
+	}
+	if workflow.FullName() == control.FullName() || workflow.FullName() == chat.FullName() {
+		t.Fatalf("workflow runtime service must be additive and separate: %s", workflow.FullName())
 	}
 
 	assertServiceMethods(t, chat, []protoreflect.Name{
@@ -39,6 +46,57 @@ func TestChatRuntimeServiceContractShape(t *testing.T) {
 		"RespondPendingRequest",
 		"InterruptTask",
 		"GetTaskStatus",
+	})
+	assertServiceMethods(t, workflow, []protoreflect.Name{
+		"InitWorkflow",
+		"GetWorkflow",
+		"GetWorkflowStatus",
+		"RestartWorkflow",
+		"DeleteWorkflow",
+		"StartWorkflowChatRun",
+		"RunWorkflowChatTurn",
+		"GetWorkflowChat",
+		"GetWorkflowChatHistory",
+		"StreamWorkflowChatEvents",
+		"RespondWorkflowChatPending",
+		"InterruptWorkflowChatRun",
+	})
+}
+
+func TestWorkflowRuntimeContractCarriesLifecyclePackageAndSafeErrors(t *testing.T) {
+	file := pb.File_codex_control_v1_codex_control_proto
+	messages := file.Messages()
+	assertMessageFields(t, messages.ByName("WorkflowPackage"), []protoreflect.Name{
+		"schema_version",
+		"workflow",
+		"package_fingerprint",
+		"files",
+		"total_size_bytes",
+	})
+	assertMessageFields(t, messages.ByName("WorkflowPackageFile"), []protoreflect.Name{
+		"relative_path",
+		"contents",
+		"size_bytes",
+		"sha256",
+		"executable",
+	})
+	assertMessageFields(t, messages.ByName("WorkflowStatus"), []protoreflect.Name{
+		"workflow",
+		"lifecycle",
+		"active_package_fingerprint",
+		"pending_package_fingerprint",
+		"restart_required",
+		"mcp_reload_state",
+		"last_error",
+	})
+	assertMessageFields(t, messages.ByName("WorkflowErrorDetails"), []protoreflect.Name{
+		"outcome",
+		"code",
+		"reason",
+		"display_message",
+		"retryable",
+		"next_action",
+		"safe_metadata",
 	})
 }
 

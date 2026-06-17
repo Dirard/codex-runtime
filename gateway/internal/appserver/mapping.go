@@ -48,7 +48,8 @@ type TurnStartParams struct {
 }
 
 type TurnInterruptParams struct {
-	TurnID string `json:"turnId"`
+	ThreadID string `json:"threadId"`
+	TurnID   string `json:"turnId"`
 }
 
 type DirectApprovalResponsePayload struct {
@@ -140,8 +141,8 @@ func NewTurnStartParams(threadID string, clientUserMessageID string, input []Use
 	}
 }
 
-func NewTurnInterruptParams(turnID string) TurnInterruptParams {
-	return TurnInterruptParams{TurnID: turnID}
+func NewTurnInterruptParams(threadID string, turnID string) TurnInterruptParams {
+	return TurnInterruptParams{ThreadID: threadID, TurnID: turnID}
 }
 
 func NewCommandApprovalResponsePayload(decision domain.ApprovalWireDecision) (DirectApprovalResponsePayload, bool) {

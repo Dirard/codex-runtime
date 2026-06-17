@@ -19,6 +19,9 @@ type Config struct {
 	Listen                   string
 	StrictSchemaVerification bool
 	ChatRuntime              ChatRuntimeConfig
+	WorkflowStorageDir       string
+	WorkflowPackageMaxBytes  int64
+	WorkflowGRPCMessageBytes int64
 	ClientAuthTokenSource    TokenSource
 	ChildEnvAllowlist        []string
 	CredentialProviders      []CredentialProvider
@@ -124,6 +127,9 @@ type ValidatedConfig struct {
 	Listen                   string
 	StrictSchemaVerification bool
 	ChatRuntime              ChatRuntimeConfig
+	WorkflowStorageDir       string
+	WorkflowPackageMaxBytes  int64
+	WorkflowGRPCMessageBytes int64
 	ChildEnvAllowlist        []string
 	CredentialProviders      []CredentialProvider
 	SessionGroups            []SessionGroup
@@ -162,4 +168,11 @@ func (c *ValidatedConfig) ChatRuntimeEnabled() bool {
 		return false
 	}
 	return c.ChatRuntime.Enabled
+}
+
+func (c *ValidatedConfig) WorkflowPackageLimitBytes() int64 {
+	if c == nil {
+		return 0
+	}
+	return c.WorkflowPackageMaxBytes
 }

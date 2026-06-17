@@ -224,6 +224,24 @@ func TestDispatcherTurnStartUsesUserInputTextShape(t *testing.T) {
 	harness.RequireDone(t)
 }
 
+func TestConnectionSendInterruptTurnWritesRequestWithoutWaitingForDelayedResponse(t *testing.T) {
+	harness := testappserver.New(t,
+		testappserver.ExpectRequest(testappserver.MethodTurnInterrupt, testappserver.CaptureID(testappserver.MethodTurnInterrupt), testappserver.WithParams(NewTurnInterruptParams("thread-1", "turn-1"))),
+	)
+	connection := NewConnection(harness.Stdin(), harness.Stdout(), config.SessionGroup{SessionGroupID: "sg-1"}, ConnectionOptions{})
+	defer connection.Close()
+
+	if err := connection.SendInterruptTurn(context.Background(), TurnInterruptCall{
+		ThreadID: "thread-1",
+		TurnID:   "turn-1",
+		TaskID:   "task-1",
+		Timeout:  time.Second,
+	}); err != nil {
+		t.Fatalf("SendInterruptTurn() error = %v", err)
+	}
+	harness.RequireDone(t)
+}
+
 func TestDispatcherCallErrorDoesNotLeakAppServerMessage(t *testing.T) {
 	const sensitiveMessage = "api_key=abcdefghijklmnopqrstuvwxyz"
 	harness := testappserver.New(t,

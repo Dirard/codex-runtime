@@ -3601,7 +3601,7 @@ func TestInterruptActiveTurnIsSentOnceAndIdempotent(t *testing.T) {
 	group := testSessionGroup(t, "sg-1", "ws-1")
 	steps := append([]testappserver.Step{}, testappserver.ThreadStart("thread-1")...)
 	steps = append(steps, testappserver.TurnStart("thread-1", "turn-1")...)
-	steps = append(steps, testappserver.TurnInterrupt("turn-1")...)
+	steps = append(steps, testappserver.TurnInterrupt("thread-1", "turn-1")...)
 	service, harness := newHarnessService(t, group, steps...)
 	response, err := service.StartTask(context.Background(), startCommand(group, "client-1", "Do it"))
 	if err != nil {
@@ -4117,7 +4117,7 @@ func TestInterruptTerminalTaskReturnsAlreadyTerminal(t *testing.T) {
 	group := testSessionGroup(t, "sg-1", "ws-1")
 	steps := append([]testappserver.Step{}, testappserver.ThreadStart("thread-1")...)
 	steps = append(steps, testappserver.TurnStart("thread-1", "turn-1")...)
-	steps = append(steps, testappserver.TurnInterrupt("turn-1")...)
+	steps = append(steps, testappserver.TurnInterrupt("thread-1", "turn-1")...)
 	steps = append(steps, testappserver.SendNotification(
 		testappserver.MethodTurnCompleted,
 		testappserver.TurnCompletedParams("thread-1", "turn-1", "interrupted"),

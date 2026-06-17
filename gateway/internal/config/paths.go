@@ -54,6 +54,52 @@ func canonicalizeExistingDir(raw string, field string) (canonicalPath, error) {
 	}, nil
 }
 
+func CanonicalizeExistingDir(raw string, field string) (string, error) {
+	canonical, err := canonicalizeExistingDir(raw, field)
+	if err != nil {
+		return "", err
+	}
+	return canonical.path, nil
+}
+
+func canonicalizeStorageDir(raw string, field string) (string, error) {
+	if raw == "" {
+		return "", fmt.Errorf("%s is required", field)
+	}
+	if !filepath.IsAbs(raw) {
+		return "", fmt.Errorf("%s must be absolute", field)
+	}
+	clean := filepath.Clean(raw)
+	if info, err := os.Stat(clean); err == nil {
+		if !info.IsDir() {
+			return "", fmt.Errorf("%s must be a directory", field)
+		}
+		canonical, err := filepath.EvalSymlinks(clean)
+		if err != nil {
+			return "", fmt.Errorf("%s must be canonicalizable: %w", field, err)
+		}
+		return filepath.Clean(canonical), nil
+	} else if !os.IsNotExist(err) {
+		return "", fmt.Errorf("%s must be inspectable: %w", field, err)
+	}
+	parent := filepath.Dir(clean)
+	if parent == clean {
+		return "", fmt.Errorf("%s parent directory is invalid", field)
+	}
+	parentInfo, err := os.Stat(parent)
+	if err != nil {
+		return "", fmt.Errorf("%s parent directory must exist: %w", field, err)
+	}
+	if !parentInfo.IsDir() {
+		return "", fmt.Errorf("%s parent path must be a directory", field)
+	}
+	parentCanonical, err := filepath.EvalSymlinks(parent)
+	if err != nil {
+		return "", fmt.Errorf("%s parent directory must be canonicalizable: %w", field, err)
+	}
+	return filepath.Join(filepath.Clean(parentCanonical), filepath.Base(clean)), nil
+}
+
 func resolveExecutable(raw string, field string) (string, error) {
 	return validateExecutable(raw, field, executableLookupEnabled)
 }

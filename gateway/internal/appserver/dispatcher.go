@@ -148,6 +148,25 @@ func (d *Dispatcher) Call(ctx context.Context, method string, params any, timeou
 	}
 }
 
+func (d *Dispatcher) SendRequest(ctx context.Context, method string, params any, timeout time.Duration, metadata CallMetadata) error {
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	call, message, err := d.newPendingCall(method, params, metadata)
+	if err != nil {
+		return err
+	}
+	if err := d.writeMessageContext(ctx, message); err != nil {
+		d.removePending(call.id)
+		return err
+	}
+	d.removePending(call.id)
+	return nil
+}
+
 func (d *Dispatcher) Notify(method string, params any) error {
 	message, err := newNotification(method, params)
 	if err != nil {

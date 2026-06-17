@@ -429,7 +429,7 @@ func (s *Service) runStart(command domain.StartTaskCommand, envelope string, pro
 		return
 	}
 	if interruptAfterStart {
-		s.sendInterruptAfterTurnStart(interruptConnection, task.id, turnID)
+		s.sendInterruptAfterTurnStart(interruptConnection, task.id, threadID, turnID)
 		s.mu.Lock()
 		if currentTask := s.tasks[task.id]; currentTask != nil {
 			response = statusStartResponseLocked(currentTask)
@@ -598,9 +598,10 @@ func (s *Service) InterruptTask(ctx context.Context, command domain.InterruptTas
 	// After interruptTarget claims the task, the interrupt is task-owned; caller
 	// cancellation must not roll back a request that may already be in flight.
 	_, callErr := target.connection.InterruptTurn(context.Background(), appserver.TurnInterruptCall{
-		TurnID:  target.turnID,
-		TaskID:  target.taskID,
-		Timeout: s.turnInterruptTimeout,
+		ThreadID: target.threadID,
+		TurnID:   target.turnID,
+		TaskID:   target.taskID,
+		Timeout:  s.turnInterruptTimeout,
 	})
 	if callErr != nil {
 		if shouldRollbackInterrupt(callErr) {

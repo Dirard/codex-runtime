@@ -1,0 +1,8 @@
+name = "visibility-alpha"
+default_agent = "visibility-alpha-agent"
+description = "Alpha workflow package used by full-e2e visibility isolation checks."
+
+[features.multi_agent_v2]
+enabled = true
+hide_spawn_agent_metadata = false
+non_code_mode_only = false

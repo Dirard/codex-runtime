@@ -204,6 +204,12 @@ func assignRoot(config *Config, key string, value string) error {
 		return parseStringInto(value, &config.Listen)
 	case "strict_schema_verification":
 		return parseBoolInto(value, &config.StrictSchemaVerification)
+	case "workflow_storage_dir":
+		return parseStringInto(value, &config.WorkflowStorageDir)
+	case "workflow_package_max_bytes":
+		return parseInt64Into(value, &config.WorkflowPackageMaxBytes)
+	case "workflow_grpc_message_bytes":
+		return parseInt64Into(value, &config.WorkflowGRPCMessageBytes)
 	case "child_env_allowlist":
 		return parseStringArrayInto(value, &config.ChildEnvAllowlist)
 	default:

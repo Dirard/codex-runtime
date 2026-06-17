@@ -260,3 +260,17 @@ func appServerCallError(err error, sessionGroupID string, clientMessageID string
 		},
 	}
 }
+
+func retryableFreshConnectionStartError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, appserver.ErrDispatcherClosed) {
+		return true
+	}
+	var gatewayErr *domain.GatewayError
+	if errors.As(err, &gatewayErr) {
+		return gatewayErr.Details.Retryable && gatewayErr.Details.Reason == domain.ReasonDispatcherUnavailable
+	}
+	return false
+}

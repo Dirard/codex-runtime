@@ -2,3 +2,5 @@
 dist/
 gateway.local.token
 gateway.local.toml
+.local/
+.supergoal/

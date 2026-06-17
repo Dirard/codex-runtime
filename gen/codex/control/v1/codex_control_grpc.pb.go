@@ -647,3 +647,528 @@ var ChatRuntimeService_ServiceDesc = grpc.ServiceDesc{
 	},
 	Metadata: "codex_control/v1/codex_control.proto",
 }
+
+const (
+	WorkflowRuntimeService_InitWorkflow_FullMethodName               = "/codex.control.v1.WorkflowRuntimeService/InitWorkflow"
+	WorkflowRuntimeService_GetWorkflow_FullMethodName                = "/codex.control.v1.WorkflowRuntimeService/GetWorkflow"
+	WorkflowRuntimeService_GetWorkflowStatus_FullMethodName          = "/codex.control.v1.WorkflowRuntimeService/GetWorkflowStatus"
+	WorkflowRuntimeService_RestartWorkflow_FullMethodName            = "/codex.control.v1.WorkflowRuntimeService/RestartWorkflow"
+	WorkflowRuntimeService_DeleteWorkflow_FullMethodName             = "/codex.control.v1.WorkflowRuntimeService/DeleteWorkflow"
+	WorkflowRuntimeService_StartWorkflowChatRun_FullMethodName       = "/codex.control.v1.WorkflowRuntimeService/StartWorkflowChatRun"
+	WorkflowRuntimeService_RunWorkflowChatTurn_FullMethodName        = "/codex.control.v1.WorkflowRuntimeService/RunWorkflowChatTurn"
+	WorkflowRuntimeService_GetWorkflowChat_FullMethodName            = "/codex.control.v1.WorkflowRuntimeService/GetWorkflowChat"
+	WorkflowRuntimeService_GetWorkflowChatHistory_FullMethodName     = "/codex.control.v1.WorkflowRuntimeService/GetWorkflowChatHistory"
+	WorkflowRuntimeService_StreamWorkflowChatEvents_FullMethodName   = "/codex.control.v1.WorkflowRuntimeService/StreamWorkflowChatEvents"
+	WorkflowRuntimeService_RespondWorkflowChatPending_FullMethodName = "/codex.control.v1.WorkflowRuntimeService/RespondWorkflowChatPending"
+	WorkflowRuntimeService_InterruptWorkflowChatRun_FullMethodName   = "/codex.control.v1.WorkflowRuntimeService/InterruptWorkflowChatRun"
+)
+
+// WorkflowRuntimeServiceClient is the client API for WorkflowRuntimeService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type WorkflowRuntimeServiceClient interface {
+	InitWorkflow(ctx context.Context, in *InitWorkflowRequest, opts ...grpc.CallOption) (*InitWorkflowResponse, error)
+	GetWorkflow(ctx context.Context, in *GetWorkflowRequest, opts ...grpc.CallOption) (*GetWorkflowResponse, error)
+	GetWorkflowStatus(ctx context.Context, in *GetWorkflowStatusRequest, opts ...grpc.CallOption) (*GetWorkflowStatusResponse, error)
+	RestartWorkflow(ctx context.Context, in *RestartWorkflowRequest, opts ...grpc.CallOption) (*RestartWorkflowResponse, error)
+	DeleteWorkflow(ctx context.Context, in *DeleteWorkflowRequest, opts ...grpc.CallOption) (*DeleteWorkflowResponse, error)
+	StartWorkflowChatRun(ctx context.Context, in *StartWorkflowChatRunRequest, opts ...grpc.CallOption) (*StartWorkflowChatRunResponse, error)
+	RunWorkflowChatTurn(ctx context.Context, in *RunWorkflowChatTurnRequest, opts ...grpc.CallOption) (*RunWorkflowChatTurnResponse, error)
+	GetWorkflowChat(ctx context.Context, in *GetWorkflowChatRequest, opts ...grpc.CallOption) (*GetWorkflowChatResponse, error)
+	GetWorkflowChatHistory(ctx context.Context, in *GetWorkflowChatHistoryRequest, opts ...grpc.CallOption) (*GetWorkflowChatHistoryResponse, error)
+	StreamWorkflowChatEvents(ctx context.Context, in *StreamWorkflowChatEventsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamWorkflowChatEventsResponse], error)
+	RespondWorkflowChatPending(ctx context.Context, in *RespondWorkflowChatPendingRequest, opts ...grpc.CallOption) (*RespondWorkflowChatPendingResponse, error)
+	InterruptWorkflowChatRun(ctx context.Context, in *InterruptWorkflowChatRunRequest, opts ...grpc.CallOption) (*InterruptWorkflowChatRunResponse, error)
+}
+
+type workflowRuntimeServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewWorkflowRuntimeServiceClient(cc grpc.ClientConnInterface) WorkflowRuntimeServiceClient {
+	return &workflowRuntimeServiceClient{cc}
+}
+
+func (c *workflowRuntimeServiceClient) InitWorkflow(ctx context.Context, in *InitWorkflowRequest, opts ...grpc.CallOption) (*InitWorkflowResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InitWorkflowResponse)
+	err := c.cc.Invoke(ctx, WorkflowRuntimeService_InitWorkflow_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workflowRuntimeServiceClient) GetWorkflow(ctx context.Context, in *GetWorkflowRequest, opts ...grpc.CallOption) (*GetWorkflowResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetWorkflowResponse)
+	err := c.cc.Invoke(ctx, WorkflowRuntimeService_GetWorkflow_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workflowRuntimeServiceClient) GetWorkflowStatus(ctx context.Context, in *GetWorkflowStatusRequest, opts ...grpc.CallOption) (*GetWorkflowStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetWorkflowStatusResponse)
+	err := c.cc.Invoke(ctx, WorkflowRuntimeService_GetWorkflowStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workflowRuntimeServiceClient) RestartWorkflow(ctx context.Context, in *RestartWorkflowRequest, opts ...grpc.CallOption) (*RestartWorkflowResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RestartWorkflowResponse)
+	err := c.cc.Invoke(ctx, WorkflowRuntimeService_RestartWorkflow_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workflowRuntimeServiceClient) DeleteWorkflow(ctx context.Context, in *DeleteWorkflowRequest, opts ...grpc.CallOption) (*DeleteWorkflowResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteWorkflowResponse)
+	err := c.cc.Invoke(ctx, WorkflowRuntimeService_DeleteWorkflow_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workflowRuntimeServiceClient) StartWorkflowChatRun(ctx context.Context, in *StartWorkflowChatRunRequest, opts ...grpc.CallOption) (*StartWorkflowChatRunResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StartWorkflowChatRunResponse)
+	err := c.cc.Invoke(ctx, WorkflowRuntimeService_StartWorkflowChatRun_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workflowRuntimeServiceClient) RunWorkflowChatTurn(ctx context.Context, in *RunWorkflowChatTurnRequest, opts ...grpc.CallOption) (*RunWorkflowChatTurnResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RunWorkflowChatTurnResponse)
+	err := c.cc.Invoke(ctx, WorkflowRuntimeService_RunWorkflowChatTurn_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workflowRuntimeServiceClient) GetWorkflowChat(ctx context.Context, in *GetWorkflowChatRequest, opts ...grpc.CallOption) (*GetWorkflowChatResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetWorkflowChatResponse)
+	err := c.cc.Invoke(ctx, WorkflowRuntimeService_GetWorkflowChat_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workflowRuntimeServiceClient) GetWorkflowChatHistory(ctx context.Context, in *GetWorkflowChatHistoryRequest, opts ...grpc.CallOption) (*GetWorkflowChatHistoryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetWorkflowChatHistoryResponse)
+	err := c.cc.Invoke(ctx, WorkflowRuntimeService_GetWorkflowChatHistory_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workflowRuntimeServiceClient) StreamWorkflowChatEvents(ctx context.Context, in *StreamWorkflowChatEventsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamWorkflowChatEventsResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &WorkflowRuntimeService_ServiceDesc.Streams[0], WorkflowRuntimeService_StreamWorkflowChatEvents_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[StreamWorkflowChatEventsRequest, StreamWorkflowChatEventsResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type WorkflowRuntimeService_StreamWorkflowChatEventsClient = grpc.ServerStreamingClient[StreamWorkflowChatEventsResponse]
+
+func (c *workflowRuntimeServiceClient) RespondWorkflowChatPending(ctx context.Context, in *RespondWorkflowChatPendingRequest, opts ...grpc.CallOption) (*RespondWorkflowChatPendingResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RespondWorkflowChatPendingResponse)
+	err := c.cc.Invoke(ctx, WorkflowRuntimeService_RespondWorkflowChatPending_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workflowRuntimeServiceClient) InterruptWorkflowChatRun(ctx context.Context, in *InterruptWorkflowChatRunRequest, opts ...grpc.CallOption) (*InterruptWorkflowChatRunResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InterruptWorkflowChatRunResponse)
+	err := c.cc.Invoke(ctx, WorkflowRuntimeService_InterruptWorkflowChatRun_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// WorkflowRuntimeServiceServer is the server API for WorkflowRuntimeService service.
+// All implementations must embed UnimplementedWorkflowRuntimeServiceServer
+// for forward compatibility.
+type WorkflowRuntimeServiceServer interface {
+	InitWorkflow(context.Context, *InitWorkflowRequest) (*InitWorkflowResponse, error)
+	GetWorkflow(context.Context, *GetWorkflowRequest) (*GetWorkflowResponse, error)
+	GetWorkflowStatus(context.Context, *GetWorkflowStatusRequest) (*GetWorkflowStatusResponse, error)
+	RestartWorkflow(context.Context, *RestartWorkflowRequest) (*RestartWorkflowResponse, error)
+	DeleteWorkflow(context.Context, *DeleteWorkflowRequest) (*DeleteWorkflowResponse, error)
+	StartWorkflowChatRun(context.Context, *StartWorkflowChatRunRequest) (*StartWorkflowChatRunResponse, error)
+	RunWorkflowChatTurn(context.Context, *RunWorkflowChatTurnRequest) (*RunWorkflowChatTurnResponse, error)
+	GetWorkflowChat(context.Context, *GetWorkflowChatRequest) (*GetWorkflowChatResponse, error)
+	GetWorkflowChatHistory(context.Context, *GetWorkflowChatHistoryRequest) (*GetWorkflowChatHistoryResponse, error)
+	StreamWorkflowChatEvents(*StreamWorkflowChatEventsRequest, grpc.ServerStreamingServer[StreamWorkflowChatEventsResponse]) error
+	RespondWorkflowChatPending(context.Context, *RespondWorkflowChatPendingRequest) (*RespondWorkflowChatPendingResponse, error)
+	InterruptWorkflowChatRun(context.Context, *InterruptWorkflowChatRunRequest) (*InterruptWorkflowChatRunResponse, error)
+	mustEmbedUnimplementedWorkflowRuntimeServiceServer()
+}
+
+// UnimplementedWorkflowRuntimeServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedWorkflowRuntimeServiceServer struct{}
+
+func (UnimplementedWorkflowRuntimeServiceServer) InitWorkflow(context.Context, *InitWorkflowRequest) (*InitWorkflowResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method InitWorkflow not implemented")
+}
+func (UnimplementedWorkflowRuntimeServiceServer) GetWorkflow(context.Context, *GetWorkflowRequest) (*GetWorkflowResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetWorkflow not implemented")
+}
+func (UnimplementedWorkflowRuntimeServiceServer) GetWorkflowStatus(context.Context, *GetWorkflowStatusRequest) (*GetWorkflowStatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetWorkflowStatus not implemented")
+}
+func (UnimplementedWorkflowRuntimeServiceServer) RestartWorkflow(context.Context, *RestartWorkflowRequest) (*RestartWorkflowResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RestartWorkflow not implemented")
+}
+func (UnimplementedWorkflowRuntimeServiceServer) DeleteWorkflow(context.Context, *DeleteWorkflowRequest) (*DeleteWorkflowResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteWorkflow not implemented")
+}
+func (UnimplementedWorkflowRuntimeServiceServer) StartWorkflowChatRun(context.Context, *StartWorkflowChatRunRequest) (*StartWorkflowChatRunResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method StartWorkflowChatRun not implemented")
+}
+func (UnimplementedWorkflowRuntimeServiceServer) RunWorkflowChatTurn(context.Context, *RunWorkflowChatTurnRequest) (*RunWorkflowChatTurnResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RunWorkflowChatTurn not implemented")
+}
+func (UnimplementedWorkflowRuntimeServiceServer) GetWorkflowChat(context.Context, *GetWorkflowChatRequest) (*GetWorkflowChatResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetWorkflowChat not implemented")
+}
+func (UnimplementedWorkflowRuntimeServiceServer) GetWorkflowChatHistory(context.Context, *GetWorkflowChatHistoryRequest) (*GetWorkflowChatHistoryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetWorkflowChatHistory not implemented")
+}
+func (UnimplementedWorkflowRuntimeServiceServer) StreamWorkflowChatEvents(*StreamWorkflowChatEventsRequest, grpc.ServerStreamingServer[StreamWorkflowChatEventsResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method StreamWorkflowChatEvents not implemented")
+}
+func (UnimplementedWorkflowRuntimeServiceServer) RespondWorkflowChatPending(context.Context, *RespondWorkflowChatPendingRequest) (*RespondWorkflowChatPendingResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RespondWorkflowChatPending not implemented")
+}
+func (UnimplementedWorkflowRuntimeServiceServer) InterruptWorkflowChatRun(context.Context, *InterruptWorkflowChatRunRequest) (*InterruptWorkflowChatRunResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method InterruptWorkflowChatRun not implemented")
+}
+func (UnimplementedWorkflowRuntimeServiceServer) mustEmbedUnimplementedWorkflowRuntimeServiceServer() {
+}
+func (UnimplementedWorkflowRuntimeServiceServer) testEmbeddedByValue() {}
+
+// UnsafeWorkflowRuntimeServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to WorkflowRuntimeServiceServer will
+// result in compilation errors.
+type UnsafeWorkflowRuntimeServiceServer interface {
+	mustEmbedUnimplementedWorkflowRuntimeServiceServer()
+}
+
+func RegisterWorkflowRuntimeServiceServer(s grpc.ServiceRegistrar, srv WorkflowRuntimeServiceServer) {
+	// If the following call pancis, it indicates UnimplementedWorkflowRuntimeServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&WorkflowRuntimeService_ServiceDesc, srv)
+}
+
+func _WorkflowRuntimeService_InitWorkflow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InitWorkflowRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowRuntimeServiceServer).InitWorkflow(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowRuntimeService_InitWorkflow_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowRuntimeServiceServer).InitWorkflow(ctx, req.(*InitWorkflowRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkflowRuntimeService_GetWorkflow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetWorkflowRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowRuntimeServiceServer).GetWorkflow(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowRuntimeService_GetWorkflow_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowRuntimeServiceServer).GetWorkflow(ctx, req.(*GetWorkflowRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkflowRuntimeService_GetWorkflowStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetWorkflowStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowRuntimeServiceServer).GetWorkflowStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowRuntimeService_GetWorkflowStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowRuntimeServiceServer).GetWorkflowStatus(ctx, req.(*GetWorkflowStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkflowRuntimeService_RestartWorkflow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RestartWorkflowRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowRuntimeServiceServer).RestartWorkflow(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowRuntimeService_RestartWorkflow_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowRuntimeServiceServer).RestartWorkflow(ctx, req.(*RestartWorkflowRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkflowRuntimeService_DeleteWorkflow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteWorkflowRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowRuntimeServiceServer).DeleteWorkflow(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowRuntimeService_DeleteWorkflow_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowRuntimeServiceServer).DeleteWorkflow(ctx, req.(*DeleteWorkflowRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkflowRuntimeService_StartWorkflowChatRun_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StartWorkflowChatRunRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowRuntimeServiceServer).StartWorkflowChatRun(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowRuntimeService_StartWorkflowChatRun_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowRuntimeServiceServer).StartWorkflowChatRun(ctx, req.(*StartWorkflowChatRunRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkflowRuntimeService_RunWorkflowChatTurn_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RunWorkflowChatTurnRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowRuntimeServiceServer).RunWorkflowChatTurn(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowRuntimeService_RunWorkflowChatTurn_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowRuntimeServiceServer).RunWorkflowChatTurn(ctx, req.(*RunWorkflowChatTurnRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkflowRuntimeService_GetWorkflowChat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetWorkflowChatRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowRuntimeServiceServer).GetWorkflowChat(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowRuntimeService_GetWorkflowChat_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowRuntimeServiceServer).GetWorkflowChat(ctx, req.(*GetWorkflowChatRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkflowRuntimeService_GetWorkflowChatHistory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetWorkflowChatHistoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowRuntimeServiceServer).GetWorkflowChatHistory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowRuntimeService_GetWorkflowChatHistory_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowRuntimeServiceServer).GetWorkflowChatHistory(ctx, req.(*GetWorkflowChatHistoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkflowRuntimeService_StreamWorkflowChatEvents_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(StreamWorkflowChatEventsRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(WorkflowRuntimeServiceServer).StreamWorkflowChatEvents(m, &grpc.GenericServerStream[StreamWorkflowChatEventsRequest, StreamWorkflowChatEventsResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type WorkflowRuntimeService_StreamWorkflowChatEventsServer = grpc.ServerStreamingServer[StreamWorkflowChatEventsResponse]
+
+func _WorkflowRuntimeService_RespondWorkflowChatPending_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RespondWorkflowChatPendingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowRuntimeServiceServer).RespondWorkflowChatPending(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowRuntimeService_RespondWorkflowChatPending_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowRuntimeServiceServer).RespondWorkflowChatPending(ctx, req.(*RespondWorkflowChatPendingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkflowRuntimeService_InterruptWorkflowChatRun_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InterruptWorkflowChatRunRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowRuntimeServiceServer).InterruptWorkflowChatRun(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowRuntimeService_InterruptWorkflowChatRun_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowRuntimeServiceServer).InterruptWorkflowChatRun(ctx, req.(*InterruptWorkflowChatRunRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// WorkflowRuntimeService_ServiceDesc is the grpc.ServiceDesc for WorkflowRuntimeService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var WorkflowRuntimeService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "codex.control.v1.WorkflowRuntimeService",
+	HandlerType: (*WorkflowRuntimeServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "InitWorkflow",
+			Handler:    _WorkflowRuntimeService_InitWorkflow_Handler,
+		},
+		{
+			MethodName: "GetWorkflow",
+			Handler:    _WorkflowRuntimeService_GetWorkflow_Handler,
+		},
+		{
+			MethodName: "GetWorkflowStatus",
+			Handler:    _WorkflowRuntimeService_GetWorkflowStatus_Handler,
+		},
+		{
+			MethodName: "RestartWorkflow",
+			Handler:    _WorkflowRuntimeService_RestartWorkflow_Handler,
+		},
+		{
+			MethodName: "DeleteWorkflow",
+			Handler:    _WorkflowRuntimeService_DeleteWorkflow_Handler,
+		},
+		{
+			MethodName: "StartWorkflowChatRun",
+			Handler:    _WorkflowRuntimeService_StartWorkflowChatRun_Handler,
+		},
+		{
+			MethodName: "RunWorkflowChatTurn",
+			Handler:    _WorkflowRuntimeService_RunWorkflowChatTurn_Handler,
+		},
+		{
+			MethodName: "GetWorkflowChat",
+			Handler:    _WorkflowRuntimeService_GetWorkflowChat_Handler,
+		},
+		{
+			MethodName: "GetWorkflowChatHistory",
+			Handler:    _WorkflowRuntimeService_GetWorkflowChatHistory_Handler,
+		},
+		{
+			MethodName: "RespondWorkflowChatPending",
+			Handler:    _WorkflowRuntimeService_RespondWorkflowChatPending_Handler,
+		},
+		{
+			MethodName: "InterruptWorkflowChatRun",
+			Handler:    _WorkflowRuntimeService_InterruptWorkflowChatRun_Handler,
+		},
+	},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "StreamWorkflowChatEvents",
+			Handler:       _WorkflowRuntimeService_StreamWorkflowChatEvents_Handler,
+			ServerStreams: true,
+		},
+	},
+	Metadata: "codex_control/v1/codex_control.proto",
+}

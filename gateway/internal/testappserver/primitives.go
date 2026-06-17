@@ -99,11 +99,47 @@ func TurnStart(threadID string, turnID string) []Step {
 }
 
 // TurnInterrupt expects turn/interrupt and responds with an interrupted turn.
-func TurnInterrupt(turnID string) []Step {
+func TurnInterrupt(threadID string, turnID string) []Step {
 	return []Step{
-		ExpectRequest(MethodTurnInterrupt, CaptureID(MethodTurnInterrupt)),
+		ExpectRequest(MethodTurnInterrupt, CaptureID(MethodTurnInterrupt), CheckMessage(func(message Message) error {
+			return requireTurnInterruptParams(message, threadID, turnID)
+		})),
 		SendResponseFor(MethodTurnInterrupt, TurnResult(turnID, "interrupted")),
 	}
+}
+
+func requireTurnInterruptParams(message Message, threadID string, turnID string) error {
+	value, err := decodeJSONValue(message.Params)
+	if err != nil {
+		return fmt.Errorf("turn/interrupt params: %w", err)
+	}
+	params, ok := value.(map[string]any)
+	if !ok {
+		return fmt.Errorf("turn/interrupt params must be object")
+	}
+	threadIDValue, ok := params["threadId"]
+	if !ok {
+		return fmt.Errorf("turn/interrupt params.threadId missing")
+	}
+	actualThreadID, ok := threadIDValue.(string)
+	if !ok {
+		return fmt.Errorf("turn/interrupt params.threadId = %T, want string", threadIDValue)
+	}
+	if actualThreadID != threadID {
+		return fmt.Errorf("turn/interrupt params.threadId = %q, want %q", actualThreadID, threadID)
+	}
+	turnIDValue, ok := params["turnId"]
+	if !ok {
+		return fmt.Errorf("turn/interrupt params.turnId missing")
+	}
+	actualTurnID, ok := turnIDValue.(string)
+	if !ok {
+		return fmt.Errorf("turn/interrupt params.turnId = %T, want string", turnIDValue)
+	}
+	if actualTurnID != turnID {
+		return fmt.Errorf("turn/interrupt params.turnId = %q, want %q", actualTurnID, turnID)
+	}
+	return nil
 }
 
 func requireTurnStartParams(message Message, threadID string) error {

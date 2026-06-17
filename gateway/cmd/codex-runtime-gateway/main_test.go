@@ -90,6 +90,7 @@ func TestRunContextComposesGatewayAndBlocksUntilShutdown(t *testing.T) {
 			taskService grpcapi.TaskService,
 			pendingService grpcapi.PendingService,
 			chatRuntime pb.ChatRuntimeServiceServer,
+			workflowRuntime pb.WorkflowRuntimeServiceServer,
 			chatSupervisors []appserver.SupervisorStatusProvider,
 		) (runtimeServer, error) {
 			serverFactoryCalled.Store(true)
@@ -101,6 +102,9 @@ func TestRunContextComposesGatewayAndBlocksUntilShutdown(t *testing.T) {
 			}
 			if chatRuntime == nil {
 				return nil, fmt.Errorf("chat runtime service is required")
+			}
+			if workflowRuntime == nil {
+				return nil, fmt.Errorf("workflow runtime service is required")
 			}
 			if len(chatSupervisors) != 2 {
 				return nil, fmt.Errorf("chat runtime supervisors = %d, want 2", len(chatSupervisors))
@@ -164,6 +168,19 @@ func TestRunContextStartsAuthenticatedGRPCGateway(t *testing.T) {
 	}()
 
 	waitForGatewayServing(t, address, token, &stderr)
+	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatalf("grpc.NewClient() error = %v", err)
+	}
+	workflowCtx, workflowCancel := context.WithTimeout(authenticatedContext(context.Background(), token), time.Second)
+	_, workflowErr := pb.NewWorkflowRuntimeServiceClient(conn).GetWorkflowStatus(workflowCtx, &pb.GetWorkflowStatusRequest{
+		Workflow: &pb.WorkflowSelector{Namespace: "team-a", WorkflowId: "missing"},
+	})
+	workflowCancel()
+	_ = conn.Close()
+	if status.Code(workflowErr) != codes.NotFound {
+		t.Fatalf("WorkflowRuntimeService GetWorkflowStatus code = %s, want NotFound from configured service (err=%v)", status.Code(workflowErr), workflowErr)
+	}
 	cancel()
 
 	select {
@@ -304,11 +321,12 @@ outbound_message_bytes = 4194304
 	configPath := filepath.Join(tempDir, "gateway.toml")
 	configText := fmt.Sprintf(`codex_binary = %s
 listen = "127.0.0.1:0"
+workflow_storage_dir = %s
 
 [client_auth_token_source]
 file = %s
 
-%s`, strconv.Quote(codexBinary), strconv.Quote(tokenFile), groups.String())
+%s`, strconv.Quote(codexBinary), strconv.Quote(filepath.Join(tempDir, "workflow-storage")), strconv.Quote(tokenFile), groups.String())
 	if err := os.WriteFile(configPath, []byte(configText), 0o600); err != nil {
 		t.Fatalf("WriteFile(config) error = %v", err)
 	}

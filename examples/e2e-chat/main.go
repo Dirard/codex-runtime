@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	codex "github.com/Dirard/codex-runtime"
 	pb "github.com/Dirard/codex-runtime/gen/codex/control/v1"
+	codex "github.com/Dirard/codex-runtime/sdk/go"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -24,6 +24,7 @@ const defaultGatewayAddress = "127.0.0.1:5575"
 type config struct {
 	gatewayAddr    string
 	token          string
+	tokenSource    string
 	sessionGroupID string
 	workspaceID    string
 	prompt         string
@@ -54,9 +55,13 @@ func main() {
 	}
 	defer conn.Close()
 
+	token, err := cfg.bearerToken()
+	if err != nil {
+		log.Fatal(err)
+	}
 	client, err := codex.New(
 		conn,
-		codex.WithBearerToken(cfg.token),
+		codex.WithBearerToken(token),
 		codex.WithSessionGroupID(cfg.sessionGroupID),
 		codex.WithWorkspaceID(cfg.workspaceID),
 	)
@@ -118,6 +123,7 @@ func readConfig() config {
 	cfg := config{
 		gatewayAddr:    firstNonEmpty(os.Getenv("CODEX_RUNTIME_GATEWAY_ADDR"), defaultGatewayAddress),
 		token:          os.Getenv("CODEX_RUNTIME_TOKEN"),
+		tokenSource:    os.Getenv("CODEX_RUNTIME_TOKEN_SOURCE"),
 		sessionGroupID: os.Getenv("CODEX_RUNTIME_SESSION_GROUP"),
 		workspaceID:    os.Getenv("CODEX_RUNTIME_WORKSPACE"),
 		prompt: firstNonEmpty(
@@ -130,6 +136,7 @@ func readConfig() config {
 
 	flag.StringVar(&cfg.gatewayAddr, "gateway", cfg.gatewayAddr, "loopback Codex runtime gateway address")
 	flag.StringVar(&cfg.token, "token", cfg.token, "gateway bearer token")
+	flag.StringVar(&cfg.tokenSource, "token-source", cfg.tokenSource, "path to a file containing the gateway bearer token")
 	flag.StringVar(&cfg.sessionGroupID, "session-group", cfg.sessionGroupID, "gateway session group id")
 	flag.StringVar(&cfg.workspaceID, "workspace", cfg.workspaceID, "gateway workspace id")
 	flag.StringVar(&cfg.prompt, "prompt", cfg.prompt, "first prompt to send to Codex")
@@ -144,8 +151,8 @@ func (cfg config) validate() error {
 	if err := validateLocalGatewayAddr(cfg.gatewayAddr); err != nil {
 		return err
 	}
-	if strings.TrimSpace(cfg.token) == "" {
-		return errors.New("CODEX_RUNTIME_TOKEN or -token is required")
+	if strings.TrimSpace(cfg.token) == "" && strings.TrimSpace(cfg.tokenSource) == "" {
+		return errors.New("CODEX_RUNTIME_TOKEN_SOURCE/-token-source or CODEX_RUNTIME_TOKEN/-token is required")
 	}
 	if strings.TrimSpace(cfg.sessionGroupID) == "" {
 		return errors.New("CODEX_RUNTIME_SESSION_GROUP or -session-group is required")
@@ -160,6 +167,21 @@ func (cfg config) validate() error {
 		return errors.New("timeout must be positive")
 	}
 	return nil
+}
+
+func (cfg config) bearerToken() (string, error) {
+	if strings.TrimSpace(cfg.token) != "" {
+		return cfg.token, nil
+	}
+	contents, err := os.ReadFile(cfg.tokenSource)
+	if err != nil {
+		return "", fmt.Errorf("read token source: %w", err)
+	}
+	token := strings.TrimSpace(string(contents))
+	if token == "" {
+		return "", errors.New("token source is empty")
+	}
+	return token, nil
 }
 
 func printStream(ctx context.Context, w io.Writer, events *codex.EventStream) (streamSummary, error) {

@@ -524,11 +524,11 @@ func TestNewServerFromConfigUsesMaximumSessionGroupTransportLimits(t *testing.T)
 	}
 	defer server.Stop()
 
-	if server.maxRecvMessageBytes != 6*domain.MiB {
-		t.Fatalf("server max recv = %d, want %d", server.maxRecvMessageBytes, 6*domain.MiB)
+	if server.maxRecvMessageBytes != int(validated.WorkflowGRPCMessageBytes) {
+		t.Fatalf("server max recv = %d, want workflow cap %d", server.maxRecvMessageBytes, validated.WorkflowGRPCMessageBytes)
 	}
-	if server.maxSendMessageBytes != 5*domain.MiB {
-		t.Fatalf("server max send = %d, want %d", server.maxSendMessageBytes, 5*domain.MiB)
+	if server.maxSendMessageBytes != int(validated.WorkflowGRPCMessageBytes) {
+		t.Fatalf("server max send = %d, want workflow cap %d", server.maxSendMessageBytes, validated.WorkflowGRPCMessageBytes)
 	}
 }
 
@@ -555,8 +555,8 @@ func TestConfigDerivedServerRejectsStartTaskAboveLowSessionInboundCapBelowProces
 
 	assertStatusCode(t, err, codes.ResourceExhausted)
 	assertStatusDoesNotContain(t, err, testBearerToken)
-	if server.maxRecvMessageBytes != highInboundCap {
-		t.Fatalf("server max recv = %d, want %d", server.maxRecvMessageBytes, highInboundCap)
+	if server.maxRecvMessageBytes != int(validated.WorkflowGRPCMessageBytes) {
+		t.Fatalf("server max recv = %d, want workflow cap %d", server.maxRecvMessageBytes, validated.WorkflowGRPCMessageBytes)
 	}
 	if got := taskService.startCallCount(); got != 0 {
 		t.Fatalf("low-session oversized StartTask reached service %d times, want 0", got)
@@ -975,6 +975,7 @@ func TestServerRegistersPublicGatewayServices(t *testing.T) {
 	want := []string{
 		"codex.control.v1.ChatRuntimeService",
 		"codex.control.v1.CodexControl",
+		"codex.control.v1.WorkflowRuntimeService",
 		"grpc.health.v1.Health",
 	}
 	if !reflect.DeepEqual(names, want) {
@@ -1319,11 +1320,12 @@ outbound_message_bytes = %d
 	}
 	raw, err := config.ParseTOML([]byte(fmt.Sprintf(`codex_binary = %s
 listen = "127.0.0.1:0"
+workflow_storage_dir = %s
 
 [client_auth_token_source]
 env = "CODEX_RUNTIME_GATEWAY_STAGE3_TEST_TOKEN"
 
-%s`, strconv.Quote(codexBinary), groups.String())))
+%s`, strconv.Quote(codexBinary), strconv.Quote(filepath.Join(tempDir, "workflow-storage")), groups.String())))
 	if err != nil {
 		t.Fatalf("ParseTOML() error = %v", err)
 	}

@@ -62,7 +62,7 @@ func (s *Service) handleChatNotification(connection AppServerClient, notificatio
 	if sessionGroupID == "" {
 		sessionGroupID = connectionSessionGroupID(connection)
 	}
-	session, ok := s.sessions[sessionGroupID]
+	session, ok := s.sessionByID(sessionGroupID)
 	if !ok {
 		return
 	}

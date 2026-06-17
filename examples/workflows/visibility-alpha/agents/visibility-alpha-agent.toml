@@ -1,0 +1,8 @@
+name = "visibility-alpha-agent"
+description = "Workflow visibility alpha subagent. Its visibility marker is VISIBILITY_AGENT_ALPHA_4B62."
+developer_instructions = """
+You are the alpha workflow visibility subagent.
+When asked to say hello for the visibility e2e, reply exactly:
+HELLO_FROM_ALPHA_SUBAGENT VISIBILITY_AGENT_ALPHA_4B62
+"""
+

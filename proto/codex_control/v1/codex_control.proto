@@ -23,9 +23,357 @@ service ChatRuntimeService {
   rpc InterruptChatRun(InterruptChatRunRequest) returns (InterruptChatRunResponse);
 }
 
+service WorkflowRuntimeService {
+  rpc InitWorkflow(InitWorkflowRequest) returns (InitWorkflowResponse);
+  rpc GetWorkflow(GetWorkflowRequest) returns (GetWorkflowResponse);
+  rpc GetWorkflowStatus(GetWorkflowStatusRequest) returns (GetWorkflowStatusResponse);
+  rpc RestartWorkflow(RestartWorkflowRequest) returns (RestartWorkflowResponse);
+  rpc DeleteWorkflow(DeleteWorkflowRequest) returns (DeleteWorkflowResponse);
+  rpc StartWorkflowChatRun(StartWorkflowChatRunRequest) returns (StartWorkflowChatRunResponse);
+  rpc RunWorkflowChatTurn(RunWorkflowChatTurnRequest) returns (RunWorkflowChatTurnResponse);
+  rpc GetWorkflowChat(GetWorkflowChatRequest) returns (GetWorkflowChatResponse);
+  rpc GetWorkflowChatHistory(GetWorkflowChatHistoryRequest) returns (GetWorkflowChatHistoryResponse);
+  rpc StreamWorkflowChatEvents(StreamWorkflowChatEventsRequest) returns (stream StreamWorkflowChatEventsResponse);
+  rpc RespondWorkflowChatPending(RespondWorkflowChatPendingRequest) returns (RespondWorkflowChatPendingResponse);
+  rpc InterruptWorkflowChatRun(InterruptWorkflowChatRunRequest) returns (InterruptWorkflowChatRunResponse);
+}
+
 message ChatRuntimeContext {
   string session_group_id = 1;
   string workspace_id = 2;
+}
+
+message WorkflowSelector {
+  string namespace = 1;
+  string workflow_id = 2;
+}
+
+message WorkflowPackage {
+  uint32 schema_version = 1;
+  WorkflowSelector workflow = 2;
+  string package_fingerprint = 3;
+  repeated WorkflowPackageFile files = 4;
+  uint64 total_size_bytes = 5;
+  map<string, string> client_metadata = 6;
+}
+
+message WorkflowPackageFile {
+  string relative_path = 1;
+  bytes contents = 2;
+  uint64 size_bytes = 3;
+  string sha256 = 4;
+  bool executable = 5;
+}
+
+message InitWorkflowRequest {
+  WorkflowPackage workflow_package = 1;
+  string client_request_id = 2;
+  string idempotency_key = 3;
+  bool allow_mcp_reload = 4;
+}
+
+message InitWorkflowResponse {
+  Workflow workflow = 1;
+  WorkflowStatus status = 2;
+  bool created = 3;
+  bool updated = 4;
+  bool no_op = 5;
+  bool restart_required = 6;
+  bool mcp_reload_applied = 7;
+}
+
+message GetWorkflowRequest {
+  WorkflowSelector workflow = 1;
+}
+
+message GetWorkflowResponse {
+  Workflow workflow = 1;
+  WorkflowStatus status = 2;
+}
+
+message GetWorkflowStatusRequest {
+  WorkflowSelector workflow = 1;
+}
+
+message GetWorkflowStatusResponse {
+  WorkflowStatus status = 1;
+}
+
+message RestartWorkflowRequest {
+  WorkflowSelector workflow = 1;
+  bool force = 2;
+  string client_request_id = 3;
+  string idempotency_key = 4;
+}
+
+message RestartWorkflowResponse {
+  WorkflowStatus status = 1;
+  bool restart_started = 2;
+  bool restart_completed = 3;
+  bool active_work_interrupted = 4;
+}
+
+message DeleteWorkflowRequest {
+  WorkflowSelector workflow = 1;
+  bool force = 2;
+  bool delete_materialized_state = 3;
+  bool cleanup_runtime = 4;
+  string client_request_id = 5;
+  string idempotency_key = 6;
+}
+
+message DeleteWorkflowResponse {
+  WorkflowStatus status = 1;
+  bool deleted = 2;
+  bool cleanup_scheduled = 3;
+  bool active_work_refused = 4;
+}
+
+message Workflow {
+  WorkflowSelector workflow = 1;
+  string storage_key = 2;
+  string active_package_fingerprint = 3;
+  string pending_package_fingerprint = 4;
+  string previous_package_fingerprint = 5;
+  WorkflowLifecycle lifecycle = 6;
+  bool restart_required = 7;
+  int64 created_at_unix_ms = 8;
+  int64 updated_at_unix_ms = 9;
+  WorkflowCapabilitySet capabilities = 10;
+}
+
+message WorkflowStatus {
+  WorkflowSelector workflow = 1;
+  WorkflowLifecycle lifecycle = 2;
+  string active_package_fingerprint = 3;
+  string pending_package_fingerprint = 4;
+  string previous_package_fingerprint = 5;
+  bool restart_required = 6;
+  WorkflowMcpReloadState mcp_reload_state = 7;
+  string process_epoch = 8;
+  repeated WorkflowActiveWork active_work = 9;
+  WorkflowErrorDetails last_error = 10;
+  WorkflowCapabilitySet capabilities = 11;
+}
+
+message WorkflowCapabilitySet {
+  ChatCapabilityState init = 1;
+  ChatCapabilityState status = 2;
+  ChatCapabilityState restart = 3;
+  ChatCapabilityState delete = 4;
+  ChatCapabilityState run = 5;
+  ChatCapabilityState history = 6;
+  ChatCapabilityState event_stream = 7;
+  ChatCapabilityState mcp_reload = 8;
+}
+
+message WorkflowActiveWork {
+  string chat_id = 1;
+  string run_id = 2;
+  ChatTurnLifecycle run_lifecycle = 3;
+  repeated ChatPendingRequest pending_requests = 4;
+}
+
+message WorkflowErrorDetails {
+  WorkflowOutcomeCategory outcome = 1;
+  WorkflowErrorCode code = 2;
+  string reason = 3;
+  string display_message = 4;
+  bool retryable = 5;
+  string next_action = 6;
+  WorkflowSelector workflow = 7;
+  string chat_id = 8;
+  string run_id = 9;
+  map<string, string> safe_metadata = 10;
+}
+
+message StartWorkflowChatRunRequest {
+  WorkflowSelector workflow = 1;
+  string prompt = 2;
+  repeated ContextBlock context_blocks = 3;
+  string client_message_id = 4;
+  string idempotency_key = 5;
+  map<string, string> ui_correlation_metadata = 6;
+}
+
+message StartWorkflowChatRunResponse {
+  WorkflowSelector workflow = 1;
+  string chat_id = 2;
+  string run_id = 3;
+  ChatStatus status = 4;
+  uint64 last_event_id = 5;
+  string event_cursor = 6;
+  bool first_turn_accepted = 7;
+  ChatCapabilitySet capabilities = 8;
+}
+
+message RunWorkflowChatTurnRequest {
+  WorkflowSelector workflow = 1;
+  string chat_id = 2;
+  string prompt = 3;
+  repeated ContextBlock context_blocks = 4;
+  string client_message_id = 5;
+  string idempotency_key = 6;
+}
+
+message RunWorkflowChatTurnResponse {
+  WorkflowSelector workflow = 1;
+  string chat_id = 2;
+  string run_id = 3;
+  ChatStatus status = 4;
+  uint64 last_event_id = 5;
+  string event_cursor = 6;
+  bool turn_accepted = 7;
+}
+
+message GetWorkflowChatRequest {
+  WorkflowSelector workflow = 1;
+  string chat_id = 2;
+}
+
+message GetWorkflowChatResponse {
+  WorkflowSelector workflow = 1;
+  Chat chat = 2;
+  ChatStatus status = 3;
+}
+
+message GetWorkflowChatHistoryRequest {
+  WorkflowSelector workflow = 1;
+  string chat_id = 2;
+  ChatHistoryDepth requested_depth = 3;
+  string cursor = 4;
+  uint32 limit = 5;
+  ChatHistorySortDirection sort_direction = 6;
+}
+
+message GetWorkflowChatHistoryResponse {
+  WorkflowSelector workflow = 1;
+  string chat_id = 2;
+  repeated ChatTurnSummary turns = 3;
+  string next_cursor = 4;
+  string backwards_cursor = 5;
+  ChatHistoryDepth returned_depth = 6;
+  ChatCapabilityState capability = 7;
+  ChatNarrowedOutcome narrowed = 8;
+}
+
+message StreamWorkflowChatEventsRequest {
+  WorkflowSelector workflow = 1;
+  string chat_id = 2;
+  oneof cursor {
+    ChatFromStartCursor from_start = 3;
+    uint64 after_event_id = 4;
+    string after_event_cursor = 5;
+  }
+  string client_subscriber_id = 6;
+}
+
+message StreamWorkflowChatEventsResponse {
+  WorkflowSelector workflow = 1;
+  oneof payload {
+    ChatEvent event = 2;
+    ChatReplayNotice replay_notice = 3;
+    ChatNarrowedOutcome narrowed = 4;
+  }
+}
+
+message RespondWorkflowChatPendingRequest {
+  WorkflowSelector workflow = 1;
+  string chat_id = 2;
+  string pending_request_id = 3;
+  string client_response_id = 4;
+  string idempotency_key = 5;
+  oneof response {
+    ApprovalPendingResponse approval = 6;
+    PermissionsPendingResponse permissions = 7;
+    McpElicitationPendingResponse mcp_elicitation = 8;
+    ToolUserInputPendingResponse tool_user_input = 9;
+  }
+}
+
+message RespondWorkflowChatPendingResponse {
+  WorkflowSelector workflow = 1;
+  string chat_id = 2;
+  string run_id = 3;
+  string pending_request_id = 4;
+  string client_response_id = 5;
+  bool accepted = 6;
+  bool already_applied = 7;
+  uint64 last_event_id = 8;
+  ChatStatus status = 9;
+}
+
+message InterruptWorkflowChatRunRequest {
+  WorkflowSelector workflow = 1;
+  string chat_id = 2;
+  string run_id = 3;
+  string client_request_id = 4;
+  string idempotency_key = 5;
+}
+
+message InterruptWorkflowChatRunResponse {
+  WorkflowSelector workflow = 1;
+  string chat_id = 2;
+  string run_id = 3;
+  ChatStatus status = 4;
+  bool interrupt_sent = 5;
+  bool already_interrupting = 6;
+  bool already_terminal = 7;
+  uint64 last_event_id = 8;
+}
+
+enum WorkflowLifecycle {
+  WORKFLOW_LIFECYCLE_UNSPECIFIED = 0;
+  WORKFLOW_LIFECYCLE_NOT_FOUND = 1;
+  WORKFLOW_LIFECYCLE_INITIALIZING = 2;
+  WORKFLOW_LIFECYCLE_READY = 3;
+  WORKFLOW_LIFECYCLE_UPDATE_STAGED = 4;
+  WORKFLOW_LIFECYCLE_RESTARTING = 5;
+  WORKFLOW_LIFECYCLE_DELETING = 6;
+  WORKFLOW_LIFECYCLE_FAILED = 7;
+  WORKFLOW_LIFECYCLE_DISABLED = 8;
+}
+
+enum WorkflowMcpReloadState {
+  WORKFLOW_MCP_RELOAD_STATE_UNSPECIFIED = 0;
+  WORKFLOW_MCP_RELOAD_STATE_NOT_REQUESTED = 1;
+  WORKFLOW_MCP_RELOAD_STATE_APPLIED = 2;
+  WORKFLOW_MCP_RELOAD_STATE_RESTART_REQUIRED = 3;
+  WORKFLOW_MCP_RELOAD_STATE_FAILED = 4;
+  WORKFLOW_MCP_RELOAD_STATE_UNSUPPORTED = 5;
+}
+
+enum WorkflowOutcomeCategory {
+  WORKFLOW_OUTCOME_CATEGORY_UNSPECIFIED = 0;
+  WORKFLOW_OUTCOME_CATEGORY_INVALID_ARGUMENT = 1;
+  WORKFLOW_OUTCOME_CATEGORY_UNAUTHENTICATED = 2;
+  WORKFLOW_OUTCOME_CATEGORY_PERMISSION_DENIED = 3;
+  WORKFLOW_OUTCOME_CATEGORY_NOT_FOUND = 4;
+  WORKFLOW_OUTCOME_CATEGORY_FAILED_PRECONDITION = 5;
+  WORKFLOW_OUTCOME_CATEGORY_ABORTED = 6;
+  WORKFLOW_OUTCOME_CATEGORY_UNSUPPORTED = 7;
+  WORKFLOW_OUTCOME_CATEGORY_UNAVAILABLE = 8;
+  WORKFLOW_OUTCOME_CATEGORY_UNKNOWN = 9;
+  WORKFLOW_OUTCOME_CATEGORY_OUT_OF_RANGE = 10;
+  WORKFLOW_OUTCOME_CATEGORY_DEADLINE_EXCEEDED = 11;
+  WORKFLOW_OUTCOME_CATEGORY_CANCELLED = 12;
+  WORKFLOW_OUTCOME_CATEGORY_INTERNAL = 13;
+}
+
+enum WorkflowErrorCode {
+  WORKFLOW_ERROR_CODE_UNSPECIFIED = 0;
+  WORKFLOW_ERROR_CODE_GATEWAY_UNAVAILABLE = 1;
+  WORKFLOW_ERROR_CODE_INVALID_WORKFLOW_PACKAGE = 2;
+  WORKFLOW_ERROR_CODE_EMPTY_PROMPT = 3;
+  WORKFLOW_ERROR_CODE_RESTART_REQUIRED = 4;
+  WORKFLOW_ERROR_CODE_REPLAY_UNAVAILABLE = 5;
+  WORKFLOW_ERROR_CODE_MCP_NOT_REACHABLE = 6;
+  WORKFLOW_ERROR_CODE_MCP_UNAVAILABLE = 7;
+  WORKFLOW_ERROR_CODE_WORKFLOW_NOT_FOUND = 8;
+  WORKFLOW_ERROR_CODE_ACTIVE_WORK_REFUSED = 9;
+  WORKFLOW_ERROR_CODE_PACKAGE_LIMIT_EXCEEDED = 10;
+  WORKFLOW_ERROR_CODE_AUTH_REQUIRED = 11;
+  WORKFLOW_ERROR_CODE_PERMISSION_DENIED = 12;
 }
 
 message StartChatRunRequest {

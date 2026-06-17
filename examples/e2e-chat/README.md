@@ -24,8 +24,8 @@ events, _ = chat.GetEventsStream(ctx, codex.AfterEventID(result.LastEventID))
 Create a local gateway config:
 
 ```powershell
-$token = "local-dev-token"
-[System.IO.File]::WriteAllText(".\gateway.local.token", $token, [System.Text.UTF8Encoding]::new($false))
+New-Item -ItemType File -Force .\gateway.local.token | Out-Null
+# Put the gateway token in .\gateway.local.token without printing it.
 
 $codexBinary = "D:/OpenAI.Codex/app/resources/codex.exe"
 $codexHome = "$env:USERPROFILE/.codex".Replace("\", "/")
@@ -82,11 +82,12 @@ it does not start a gateway or Codex by itself:
 
 ```powershell
 $env:CODEX_RUNTIME_GATEWAY_ADDR = "127.0.0.1:5575"
-$env:CODEX_RUNTIME_TOKEN = "local-dev-token"
+$env:CODEX_RUNTIME_TOKEN_SOURCE = ".\gateway.local.token"
 $env:CODEX_RUNTIME_SESSION_GROUP = "local-main"
 $env:CODEX_RUNTIME_WORKSPACE = "workspace-main"
 
 go run ./examples/e2e-chat `
+  -token-source ".\gateway.local.token" `
   -prompt "Reply with one short sentence." `
   -continue-prompt "Continue in the same chat with one more short sentence."
 ```

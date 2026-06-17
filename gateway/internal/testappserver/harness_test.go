@@ -87,8 +87,8 @@ func TestLifecyclePrimitiveSequences(t *testing.T) {
 		},
 		{
 			name:    "turn interrupt",
-			steps:   TurnInterrupt("turn-1"),
-			request: Request(12, MethodTurnInterrupt, map[string]any{"turnId": "turn-1"}),
+			steps:   TurnInterrupt("thread-1", "turn-1"),
+			request: Request(12, MethodTurnInterrupt, map[string]any{"threadId": "thread-1", "turnId": "turn-1"}),
 			want: []Message{
 				Response(12, TurnResult("turn-1", "interrupted")),
 			},

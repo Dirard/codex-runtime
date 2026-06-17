@@ -19,6 +19,8 @@ import (
 	"github.com/Dirard/codex-runtime/gateway/internal/domain"
 	"github.com/Dirard/codex-runtime/gateway/internal/grpcapi"
 	"github.com/Dirard/codex-runtime/gateway/internal/tasks"
+	"github.com/Dirard/codex-runtime/gateway/internal/workflowruntime"
+	"github.com/Dirard/codex-runtime/gateway/internal/workflowstorage"
 	pb "github.com/Dirard/codex-runtime/gen/codex/control/v1"
 	"google.golang.org/grpc"
 )
@@ -109,7 +111,7 @@ type runtimeServer interface {
 type runtimeDependencies struct {
 	loadConfig    func(string, ...config.LoadOption) (*config.ValidatedConfig, error)
 	newSupervisor func(context.Context, *config.ValidatedConfig, config.SessionGroup, appserver.ProcessOptions) (runtimeSupervisor, string, error)
-	newServer     func(*config.ValidatedConfig, grpcapi.TaskService, grpcapi.PendingService, pb.ChatRuntimeServiceServer, []appserver.SupervisorStatusProvider) (runtimeServer, error)
+	newServer     func(*config.ValidatedConfig, grpcapi.TaskService, grpcapi.PendingService, pb.ChatRuntimeServiceServer, pb.WorkflowRuntimeServiceServer, []appserver.SupervisorStatusProvider) (runtimeServer, error)
 	signalContext func(context.Context) (context.Context, context.CancelFunc)
 }
 
@@ -124,10 +126,12 @@ func defaultRuntimeDependencies() runtimeDependencies {
 			taskService grpcapi.TaskService,
 			pendingService grpcapi.PendingService,
 			chatRuntime pb.ChatRuntimeServiceServer,
+			workflowRuntime pb.WorkflowRuntimeServiceServer,
 			supervisors []appserver.SupervisorStatusProvider,
 		) (runtimeServer, error) {
 			return grpcapi.NewServerFromConfigWithOptions(validated, taskService, pendingService, grpcapi.ServerOptions{
 				ChatRuntimeService:     chatRuntime,
+				WorkflowRuntimeService: workflowRuntime,
 				ChatRuntimeSupervisors: supervisors,
 			})
 		},
@@ -159,6 +163,7 @@ func signalContext(ctx context.Context) (context.Context, context.CancelFunc) {
 type gatewayRuntime struct {
 	server      runtimeServer
 	supervisors []runtimeSupervisor
+	closers     []io.Closer
 }
 
 func composeRuntime(ctx context.Context, validated *config.ValidatedConfig, stderr io.Writer, dependencies runtimeDependencies) (*gatewayRuntime, error) {
@@ -198,8 +203,27 @@ func composeRuntime(ctx context.Context, validated *config.ValidatedConfig, stde
 		closeSupervisors(supervisors)
 		return nil, err
 	}
+	workflowStorage, err := workflowstorage.NewManager(validated.WorkflowStorageDir, workflowstorage.PackageLimits{
+		MaxBytes: validated.WorkflowPackageLimitBytes(),
+	})
+	if err != nil {
+		closeSupervisors(supervisors)
+		return nil, err
+	}
+	workflowManager, err := workflowruntime.NewManager(workflowruntime.Options{
+		Config:      validated,
+		BaseSession: validated.SessionGroups[0],
+		ChatRuntime: chatService,
+		StderrSink:  stderrSink(stderr),
+	})
+	if err != nil {
+		closeSupervisors(supervisors)
+		return nil, err
+	}
+	closers := []io.Closer{workflowManager}
 	maxRecvMessageBytes, maxSendMessageBytes, err := grpcMessageLimits(validated)
 	if err != nil {
+		closeClosers(closers)
 		closeSupervisors(supervisors)
 		return nil, err
 	}
@@ -210,12 +234,19 @@ func composeRuntime(ctx context.Context, validated *config.ValidatedConfig, stde
 		SessionGroups:       sessionResolver(validated),
 		Runtime:             chatService,
 	})
-	server, err := dependencies.newServer(validated, service, service, chatRuntimeGRPC, chatSupervisors)
+	workflowRuntimeGRPC := grpcapi.NewWorkflowRuntimeService(grpcapi.WorkflowRuntimeServiceOptions{
+		Enabled:  validated.ChatRuntimeEnabled(),
+		Storage:  workflowStorage,
+		Runtime:  chatService,
+		Launcher: workflowManager,
+	})
+	server, err := dependencies.newServer(validated, service, service, chatRuntimeGRPC, workflowRuntimeGRPC, chatSupervisors)
 	if err != nil {
+		closeClosers(closers)
 		closeSupervisors(supervisors)
 		return nil, err
 	}
-	return &gatewayRuntime{server: server, supervisors: supervisors}, nil
+	return &gatewayRuntime{server: server, supervisors: supervisors, closers: closers}, nil
 }
 
 func sessionResolver(validated *config.ValidatedConfig) grpcapi.SessionGroupResolver {
@@ -237,6 +268,14 @@ func sessionResolver(validated *config.ValidatedConfig) grpcapi.SessionGroupReso
 func grpcMessageLimits(validated *config.ValidatedConfig) (int, int, error) {
 	maxRecvMessageBytes := 0
 	maxSendMessageBytes := 0
+	if validated.WorkflowGRPCMessageBytes > 0 {
+		workflowLimit, err := int64ToPositiveInt(validated.WorkflowGRPCMessageBytes, "workflow gRPC message limit")
+		if err != nil {
+			return 0, 0, err
+		}
+		maxRecvMessageBytes = max(maxRecvMessageBytes, workflowLimit)
+		maxSendMessageBytes = max(maxSendMessageBytes, workflowLimit)
+	}
 	for _, group := range validated.SessionGroups {
 		inboundLimit, err := int64ToPositiveInt(group.GRPCLimits.InboundMessageBytes, "inbound gRPC message limit")
 		if err != nil {
@@ -309,7 +348,16 @@ func (r *gatewayRuntime) Close() {
 	if r.server != nil {
 		r.server.Stop()
 	}
+	closeClosers(r.closers)
 	closeSupervisors(r.supervisors)
+}
+
+func closeClosers(closers []io.Closer) {
+	for _, closer := range closers {
+		if closer != nil {
+			_ = closer.Close()
+		}
+	}
 }
 
 func closeSupervisors(supervisors []runtimeSupervisor) {

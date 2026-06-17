@@ -15,9 +15,10 @@ import (
 const testTokenEnv = "CODEX_GATEWAY_TEST_TOKEN"
 
 type testFixture struct {
-	binary string
-	cwd    string
-	home   string
+	binary  string
+	cwd     string
+	home    string
+	storage string
 }
 
 type sessionTOMLOptions struct {
@@ -158,6 +159,53 @@ func TestChatRuntimeEnabledConfig(t *testing.T) {
 			}
 			if cfg.ChatRuntimeEnabled() != tt.want {
 				t.Fatalf("ChatRuntimeEnabled() = %v, want %v", cfg.ChatRuntimeEnabled(), tt.want)
+			}
+		})
+	}
+}
+
+func TestWorkflowStorageAndPackageLimitsConfig(t *testing.T) {
+	t.Setenv(testTokenEnv, "valid-test-token")
+	fixture := newTestFixture(t)
+	cfg, err := loadConfigFromText(t, validConfigTOML(t, fixture, ""))
+	if err != nil {
+		t.Fatalf("LoadFile() error = %v", err)
+	}
+	assertSameFile(t, filepath.Dir(cfg.WorkflowStorageDir), filepath.Dir(fixture.storage))
+	if filepath.Base(cfg.WorkflowStorageDir) != filepath.Base(fixture.storage) {
+		t.Fatalf("WorkflowStorageDir = %q, want base %q", cfg.WorkflowStorageDir, filepath.Base(fixture.storage))
+	}
+	if cfg.WorkflowPackageMaxBytes != DefaultWorkflowPackageMaxBytes {
+		t.Fatalf("WorkflowPackageMaxBytes = %d, want %d", cfg.WorkflowPackageMaxBytes, DefaultWorkflowPackageMaxBytes)
+	}
+	if cfg.WorkflowGRPCMessageBytes < cfg.WorkflowPackageMaxBytes {
+		t.Fatalf("WorkflowGRPCMessageBytes = %d smaller than package limit %d", cfg.WorkflowGRPCMessageBytes, cfg.WorkflowPackageMaxBytes)
+	}
+
+	for _, tt := range []struct {
+		name string
+		toml string
+	}{
+		{
+			name: "missing storage",
+			toml: strings.Replace(validConfigTOML(t, fixture, ""), workflowRootTOML(t, fixture), "", 1),
+		},
+		{
+			name: "relative storage",
+			toml: strings.Replace(validConfigTOML(t, fixture, ""), workflowRootTOML(t, fixture), "workflow_storage_dir = \"relative-state\"\n", 1),
+		},
+		{
+			name: "package limit out of bounds",
+			toml: strings.Replace(validConfigTOML(t, fixture, ""), workflowRootTOML(t, fixture), workflowRootTOML(t, fixture)+"workflow_package_max_bytes = 10485761\n", 1),
+		},
+		{
+			name: "workflow grpc below package",
+			toml: strings.Replace(validConfigTOML(t, fixture, ""), workflowRootTOML(t, fixture), workflowRootTOML(t, fixture)+"workflow_package_max_bytes = 10485760\nworkflow_grpc_message_bytes = 10485759\n", 1),
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := loadConfigFromText(t, tt.toml); err == nil {
+				t.Fatal("LoadFile() succeeded, want validation error")
 			}
 		})
 	}
@@ -916,9 +964,10 @@ func TestCredentialProviderWorkdirCanonicalized(t *testing.T) {
 func newTestFixture(t *testing.T) testFixture {
 	t.Helper()
 	return testFixture{
-		binary: writeTestExecutable(t),
-		cwd:    t.TempDir(),
-		home:   t.TempDir(),
+		binary:  writeTestExecutable(t),
+		cwd:     t.TempDir(),
+		home:    t.TempDir(),
+		storage: t.TempDir(),
 	}
 }
 
@@ -982,19 +1031,20 @@ func validConfigTOML(t *testing.T, fixture testFixture, body string) string {
 	return fmt.Sprintf(`codex_binary = %s
 listen = "127.0.0.1:0"
 child_env_allowlist = ["GATEWAY_SAFE_ENV"]
+%s
 
 [client_auth_token_source]
 env = %s
 
-%s`, strconv.Quote(fixture.binary), strconv.Quote(testTokenEnv), body)
+%s`, strconv.Quote(fixture.binary), workflowRootTOML(t, fixture), strconv.Quote(testTokenEnv), body)
 }
 
 func configTOMLWithChatRuntime(t *testing.T, fixture testFixture, enabled string) string {
 	t.Helper()
 	return strings.Replace(
 		validConfigTOML(t, fixture, ""),
-		"child_env_allowlist = [\"GATEWAY_SAFE_ENV\"]\n",
-		"child_env_allowlist = [\"GATEWAY_SAFE_ENV\"]\n\n[chat_runtime]\nenabled = "+enabled+"\n",
+		workflowRootTOML(t, fixture)+"\n",
+		workflowRootTOML(t, fixture)+"\n[chat_runtime]\nenabled = "+enabled+"\n\n",
 		1,
 	)
 }
@@ -1007,6 +1057,11 @@ func defaultSessionTOML(t *testing.T, fixture testFixture) string {
 		cwd:       fixture.cwd,
 		home:      fixture.home,
 	})
+}
+
+func workflowRootTOML(t *testing.T, fixture testFixture) string {
+	t.Helper()
+	return fmt.Sprintf("workflow_storage_dir = %s\n", strconv.Quote(fixture.storage))
 }
 
 func sessionGroupTOML(t *testing.T, options sessionTOMLOptions) string {

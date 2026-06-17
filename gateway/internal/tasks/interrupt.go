@@ -39,7 +39,7 @@ func (s *Service) interruptTarget(locator domain.TaskLocator) (interruptTarget, 
 		response.PreTurnCancelRecorded = true
 		return interruptTarget{preTurnRecorded: &response}, nil
 	}
-	if task.connection == nil {
+	if task.connection == nil || task.threadID == "" {
 		return interruptTarget{}, internalError(task.sessionGroupID, task.id, task.clientMessageID)
 	}
 	task.interruptSent = true
@@ -54,6 +54,7 @@ func (s *Service) interruptTarget(locator domain.TaskLocator) (interruptTarget, 
 	target := interruptTarget{
 		taskID:           task.id,
 		sessionGroupID:   task.sessionGroupID,
+		threadID:         task.threadID,
 		turnID:           task.turnID,
 		connection:       task.connection,
 		stateEvent:       event,
@@ -95,14 +96,15 @@ func (s *Service) rollbackInterrupt(taskID string) {
 	s.publishEvent(task.id, subscribers, event, false)
 }
 
-func (s *Service) sendInterruptAfterTurnStart(connection *appserver.Connection, taskID string, turnID string) {
-	if connection == nil || turnID == "" {
+func (s *Service) sendInterruptAfterTurnStart(connection *appserver.Connection, taskID string, threadID string, turnID string) {
+	if connection == nil || threadID == "" || turnID == "" {
 		return
 	}
 	_, err := connection.InterruptTurn(context.Background(), appserver.TurnInterruptCall{
-		TurnID:  turnID,
-		TaskID:  taskID,
-		Timeout: s.turnInterruptTimeout,
+		ThreadID: threadID,
+		TurnID:   turnID,
+		TaskID:   taskID,
+		Timeout:  s.turnInterruptTimeout,
 	})
 	if err != nil && shouldRollbackInterrupt(err) {
 		s.rollbackInterrupt(taskID)
