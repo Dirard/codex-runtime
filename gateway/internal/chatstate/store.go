@@ -252,6 +252,9 @@ func (s *Store) AppendEvent(input EventInput) (EventRecord, error) {
 		PendingCreated:            cloneChatPendingRequest(input.PendingCreated),
 		PendingResolved:           cloneChatPendingResolved(input.PendingResolved),
 		Terminal:                  cloneChatTerminal(input.Terminal),
+		CommandStarted:            cloneCommandStartedEvent(input.CommandStarted),
+		CommandOutputDelta:        cloneCommandOutputDeltaEvent(input.CommandOutputDelta),
+		GatewayWarning:            cloneGatewayWarningEvent(input.GatewayWarning),
 		CreatedAtUnixMS:           s.now().UnixMilli(),
 		SizeBytes:                 input.SizeBytes,
 	}
@@ -811,6 +814,30 @@ func cloneChatTerminal(terminal *domain.ChatTerminal) *domain.ChatTerminal {
 		return nil
 	}
 	cloned := *terminal
+	return &cloned
+}
+
+func cloneCommandStartedEvent(event *domain.CommandStartedEvent) *domain.CommandStartedEvent {
+	if event == nil {
+		return nil
+	}
+	cloned := *event
+	return &cloned
+}
+
+func cloneCommandOutputDeltaEvent(event *domain.CommandOutputDeltaEvent) *domain.CommandOutputDeltaEvent {
+	if event == nil {
+		return nil
+	}
+	cloned := *event
+	return &cloned
+}
+
+func cloneGatewayWarningEvent(event *domain.GatewayWarningEvent) *domain.GatewayWarningEvent {
+	if event == nil {
+		return nil
+	}
+	cloned := *event
 	return &cloned
 }
 

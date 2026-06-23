@@ -8,10 +8,20 @@ import (
 )
 
 type EventStream struct {
-	stream         pb.ChatRuntimeService_StreamChatEventsClient
-	workflowStream pb.WorkflowRuntimeService_StreamWorkflowChatEventsClient
-	cancel         context.CancelFunc
-	closeOnce      sync.Once
+	stream                    pb.ChatRuntimeService_StreamChatEventsClient
+	workflowStream            pb.WorkflowRuntimeService_StreamWorkflowChatEventsClient
+	cancel                    context.CancelFunc
+	closeOnce                 sync.Once
+	readMu                    sync.Mutex
+	readMode                  eventStreamReadMode
+	friendlyCursorUnavailable bool
+	expectTerminal            bool
+	terminalSeen              bool
+	chatID                    string
+	runID                     string
+	lastSafeResumeMeta        EventMeta
+	unusableErr               error
+	commandRefs               map[string]CommandRef
 }
 
 type StreamOption func(*streamOptions)
@@ -127,6 +137,13 @@ func (s *EventStream) Recv() (*pb.StreamChatEventsResponse, error) {
 	if s == nil {
 		return nil, ErrNilClient
 	}
+	if err := s.beginReadMode(eventStreamReadModeRaw); err != nil {
+		return nil, err
+	}
+	return s.recvRaw()
+}
+
+func (s *EventStream) recvRaw() (*pb.StreamChatEventsResponse, error) {
 	if s.workflowStream != nil {
 		message, err := s.workflowStream.Recv()
 		if err != nil {

@@ -8,10 +8,10 @@ $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $scanRoots = @(
     "README.md",
-    "docs/workflow-acceptance-matrix.md",
-    "docs/product-docs",
+    "docs",
     "examples/api-handler",
     "examples/e2e-chat",
+    "examples/full-e2e",
     "examples/workflow-probe",
     "examples/workflow-scaffold",
     "examples/workflow-smoke",
@@ -22,7 +22,7 @@ $rules = @(
     @{ Name = "OpenAI secret key literal"; Pattern = "(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}" },
     @{ Name = "private key block"; Pattern = "-----BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----" },
     @{ Name = "raw bearer header"; Pattern = "(?i)authorization\s*:\s*bearer\s+(?!<|redacted|\[redacted\])\S+" },
-    @{ Name = "raw token env assignment"; Pattern = "(?m)CODEX_RUNTIME_TOKEN\s*=\s*(?!<|redacted|\[redacted\])\S+" },
+    @{ Name = "raw token env assignment"; Pattern = "(?m)CODEX_RUNTIME(?:_[A-Z0-9]+)*_TOKEN\s*=\s*(?!<|redacted|\[redacted\])\S+" },
     @{ Name = "raw cookie header"; Pattern = "(?i)(cookie|set-cookie)\s*:\s*(?!<|redacted|\[redacted\])\S+" },
     @{ Name = "raw app-server jsonl"; Pattern = "(?i)\{.*(""jsonrpc""|""method"").*\}" }
 )

@@ -107,6 +107,9 @@ type ChatEvent struct {
 	PendingCreated            *ChatPendingRequest
 	PendingResolved           *ChatPendingResolved
 	Terminal                  *ChatTerminal
+	CommandStarted            *CommandStartedEvent
+	CommandOutputDelta        *CommandOutputDeltaEvent
+	GatewayWarning            *GatewayWarningEvent
 }
 
 type ChatPendingResolved struct {

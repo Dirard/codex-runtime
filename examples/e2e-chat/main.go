@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	pb "github.com/Dirard/codex-runtime/gen/codex/control/v1"
 	codex "github.com/Dirard/codex-runtime/sdk/go"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -38,6 +37,7 @@ type streamSummary struct {
 	doneBy             string
 	terminalLifecycle  string
 	maxEventID         uint64
+	eventCursor        string
 }
 
 func main() {
@@ -96,11 +96,7 @@ func main() {
 		return
 	}
 
-	result, err := chat.Run(ctx, cfg.continuePrompt)
-	if err != nil {
-		log.Fatal(err)
-	}
-	events, err = chat.GetEventsStream(ctx, streamAfterRun(result))
+	result, events, err := chat.RunWithEvents(ctx, cfg.continuePrompt)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -112,7 +108,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("second_turn: events=%d done_by=%s terminal=%s\n", continueSummary.events, continueSummary.doneBy, continueSummary.terminalLifecycle)
+	fmt.Printf("second_turn: run_id=%s events=%d done_by=%s terminal=%s\n", result.RunID, continueSummary.events, continueSummary.doneBy, continueSummary.terminalLifecycle)
 
 	if err := printChatSnapshot(ctx, chat); err != nil {
 		log.Fatal(err)
@@ -192,51 +188,56 @@ func printStream(ctx context.Context, w io.Writer, events *codex.EventStream) (s
 		if err := ctx.Err(); err != nil {
 			return summary, err
 		}
-		message, err := events.Recv()
+		event, err := events.NextEvent(ctx)
 		if err != nil {
 			if errors.Is(err, io.EOF) && summary.assistantCompleted {
 				return summary, nil
 			}
 			return summary, err
 		}
-		if notice := message.GetReplayNotice(); notice != nil {
-			fmt.Fprintf(w, "\n[replay notice: %s]\n", notice.GetCode())
-			continue
-		}
-		if narrowed := message.GetNarrowed(); narrowed != nil {
-			return summary, fmt.Errorf("event stream narrowed: %s", narrowed.GetReason())
-		}
-
-		event := message.GetEvent()
-		if event == nil {
-			continue
-		}
 		summary.events++
-		if event.GetEventId() > summary.maxEventID {
-			summary.maxEventID = event.GetEventId()
+		if event.Meta().ID > summary.maxEventID {
+			summary.maxEventID = event.Meta().ID
+		}
+		if event.Meta().Cursor != "" {
+			summary.eventCursor = event.Meta().Cursor
 		}
 
-		if delta := event.GetAssistantDelta(); delta != nil {
+		switch typed := event.(type) {
+		case *codex.ReplayNotice:
+			fmt.Fprintf(w, "\n[replay notice: %s]\n", typed.Code())
+		case *codex.StreamNarrowed:
+			return summary, fmt.Errorf("event stream narrowed: %s", typed.Reason())
+		case *codex.AssistantTextDelta:
 			printedDelta = true
-			fmt.Fprint(w, delta.GetTextDelta())
-		}
-		if completed := event.GetAssistantMessageCompleted(); completed != nil {
+			fmt.Fprint(w, typed.TextDelta())
+		case *codex.AssistantMessageCompleted:
 			summary.assistantCompleted = true
-			if !printedDelta && completed.GetMessage() != "" {
-				fmt.Fprint(w, completed.GetMessage())
+			if !printedDelta && typed.Message() != "" {
+				fmt.Fprint(w, typed.Message())
 			}
 			fmt.Fprintln(w)
 			if summary.doneBy == "" {
 				summary.doneBy = "assistant_message_completed"
 			}
-			continue
-		}
-		if pending := event.GetPendingRequestCreated(); pending != nil {
-			fmt.Fprintf(w, "\n[pending: %s]\n", pending.GetPendingRequest().GetPendingType())
-		}
-		if terminal := event.GetTerminal(); terminal != nil {
+		case codex.PendingAction:
+			display := typed.Display()
+			fmt.Fprintf(w, "\n[pending: %s] %s\n", typed.PendingKind(), display.Title)
+		case *codex.CommandStarted:
+			command := typed.Command()
+			fmt.Fprintf(w, "\n[command: %s]\n", command.Display)
+		case *codex.CommandOutput:
+			command := typed.Command()
+			if command.Known {
+				fmt.Fprintf(w, "\n[command output %s %s] %s", command.ID, typed.Stream(), typed.Delta())
+			} else {
+				fmt.Fprintf(w, "\n[command output unknown %s] %s", typed.Stream(), typed.Delta())
+			}
+		case *codex.Warning:
+			fmt.Fprintf(w, "\n[warning] %s\n", typed.Message())
+		case codex.TerminalEvent:
 			summary.doneBy = "terminal"
-			summary.terminalLifecycle = terminal.GetTerminal().GetTerminalLifecycle().String()
+			summary.terminalLifecycle = string(typed.Result().State)
 			if summary.terminalLifecycle == "" {
 				summary.terminalLifecycle = "terminal"
 			}
@@ -246,15 +247,15 @@ func printStream(ctx context.Context, w io.Writer, events *codex.EventStream) (s
 }
 
 func printChatSnapshot(ctx context.Context, chat *codex.Chat) error {
-	status, err := chat.GetStatus(ctx)
+	status, err := chat.GetStatusSnapshot(ctx)
 	if err != nil {
 		return err
 	}
-	history, err := chat.GetHistory(
+	history, err := chat.GetHistoryPage(
 		ctx,
-		codex.WithHistoryDepth(pb.ChatHistoryDepth_CHAT_HISTORY_DEPTH_TURN_SUMMARY),
-		codex.WithHistoryLimit(20),
-		codex.WithHistorySortDirection(pb.ChatHistorySortDirection_CHAT_HISTORY_SORT_DIRECTION_ASCENDING),
+		codex.WithHistoryPageDepth(codex.HistoryDepthTurnSummary),
+		codex.WithHistoryPageLimit(20),
+		codex.WithHistoryPageSort(codex.HistorySortAscending),
 	)
 	if err != nil {
 		return err
@@ -262,23 +263,13 @@ func printChatSnapshot(ctx context.Context, chat *codex.Chat) error {
 
 	fmt.Printf(
 		"status: lookup=%s thread=%s current_run=%s pending=%d\n",
-		status.GetLookup(),
-		status.GetThreadLifecycle(),
-		status.GetCurrentRunLifecycle(),
-		len(status.GetActivePendingRequests()),
+		status.ChatID,
+		status.ThreadLifecycle,
+		status.RunLifecycle,
+		len(status.Pending),
 	)
-	fmt.Printf("history: turns=%d returned_depth=%s\n", len(history.GetTurns()), history.GetReturnedDepth())
+	fmt.Printf("history: turns=%d returned_depth=%s\n", len(history.Turns), history.ReturnedDepth)
 	return nil
-}
-
-func streamAfterRun(result *codex.RunResult) codex.StreamOption {
-	if result != nil && result.EventCursor != "" {
-		return codex.AfterEventCursor(result.EventCursor)
-	}
-	if result != nil {
-		return codex.AfterEventID(result.LastEventID)
-	}
-	return codex.AfterEventID(0)
 }
 
 func validateLocalGatewayAddr(target string) error {

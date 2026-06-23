@@ -953,6 +953,32 @@ func chatEventToProto(event domain.ChatEvent) (*pb.ChatEvent, error) {
 		}
 		protoEvent.Payload = &pb.ChatEvent_Terminal{Terminal: &pb.ChatTerminalEvent{Terminal: terminal}}
 	}
+	if event.CommandStarted != nil {
+		payloadCount++
+		protoEvent.Payload = &pb.ChatEvent_CommandStarted{CommandStarted: &pb.CommandStartedEvent{
+			ItemId:         event.CommandStarted.ItemID,
+			CommandDisplay: event.CommandStarted.CommandDisplay,
+			WorkspaceLabel: event.CommandStarted.WorkspaceLabel,
+		}}
+	}
+	if event.CommandOutputDelta != nil {
+		payloadCount++
+		commandOutput, ok := commandOutputDeltaEventToProto(*event.CommandOutputDelta)
+		if !ok {
+			return nil, redactedInternalStatusError()
+		}
+		protoEvent.Payload = &pb.ChatEvent_CommandOutputDelta{CommandOutputDelta: commandOutput}
+	}
+	if event.GatewayWarning != nil {
+		payloadCount++
+		protoEvent.Payload = &pb.ChatEvent_GatewayWarning{GatewayWarning: &pb.GatewayWarningEvent{
+			Code:           event.GatewayWarning.Code,
+			Message:        event.GatewayWarning.Message,
+			RequestType:    event.GatewayWarning.RequestType,
+			AutoResolution: event.GatewayWarning.AutoResolution,
+			LimitReason:    event.GatewayWarning.LimitReason,
+		}}
+	}
 	if payloadCount != 1 || protoEvent.Payload == nil {
 		return nil, redactedInternalStatusError()
 	}

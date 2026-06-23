@@ -78,6 +78,9 @@ type EventInput struct {
 	PendingCreated            *domain.ChatPendingRequest
 	PendingResolved           *domain.ChatPendingResolved
 	Terminal                  *domain.ChatTerminal
+	CommandStarted            *domain.CommandStartedEvent
+	CommandOutputDelta        *domain.CommandOutputDeltaEvent
+	GatewayWarning            *domain.GatewayWarningEvent
 	SizeBytes                 int64
 }
 
@@ -93,6 +96,9 @@ type EventRecord struct {
 	PendingCreated            *domain.ChatPendingRequest
 	PendingResolved           *domain.ChatPendingResolved
 	Terminal                  *domain.ChatTerminal
+	CommandStarted            *domain.CommandStartedEvent
+	CommandOutputDelta        *domain.CommandOutputDeltaEvent
+	GatewayWarning            *domain.GatewayWarningEvent
 	CreatedAtUnixMS           int64
 	SizeBytes                 int64
 }

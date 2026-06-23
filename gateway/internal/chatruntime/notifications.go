@@ -14,6 +14,14 @@ import (
 	"github.com/Dirard/codex-runtime/gateway/internal/redact"
 )
 
+const (
+	chatGatewayWarningCodeAppServerWarning  = "app_server_warning"
+	chatGatewayWarningCodeConfigWarning     = "config_warning"
+	chatGatewayWarningCodeGuardianWarning   = "guardian_warning"
+	chatGatewayWarningCodeModelRerouted     = "model_rerouted"
+	chatGatewayWarningCodeModelVerification = "model_verification"
+)
+
 type notificationProvider interface {
 	Notifications() <-chan appserver.Notification
 }
@@ -88,10 +96,16 @@ func (s *Service) handleChatNotification(connection AppServerClient, notificatio
 	switch notification.Method {
 	case "item/agentMessage/delta":
 		s.appendAssistantDeltaEvent(connection, session, runScope, active.State, root)
+	case "item/started":
+		s.appendCommandStartedEvent(connection, session, runScope, active.State, root)
+	case "item/commandExecution/outputDelta":
+		s.appendCommandOutputDeltaEvent(connection, session, runScope, active.State, root)
 	case "item/completed":
 		s.appendAssistantCompletedEvent(connection, session, runScope, active.State, root)
 	case "turn/completed":
 		s.appendTurnCompletedEvent(runScope, root)
+	case "warning", "guardianWarning", "configWarning", "model/rerouted", "model/verification":
+		s.appendGatewayWarningEvent(connection, session, runScope, active.State, notification.Method, root)
 	}
 }
 
@@ -125,6 +139,76 @@ func (s *Service) appendAssistantCompletedEvent(connection AppServerClient, sess
 	})
 }
 
+func (s *Service) appendCommandStartedEvent(connection AppServerClient, session Session, runScope chatstate.RunScope, state chatstate.RunState, root map[string]any) {
+	if firstChatNotificationString(root, "item.type", "type", "itemType") != "commandExecution" {
+		return
+	}
+	itemID := firstChatNotificationString(root, "item.id", "itemId", "item_id", "id")
+	if itemID == "" {
+		return
+	}
+	rawCommand := firstChatNotificationString(root, "item.command", "command", "item.commandDisplay", "commandDisplay")
+	command, commandTruncated := chatNotificationText(connection, session, rawCommand, domain.MaxOutboundCommandDisplayBytes)
+	workspaceLabel, labelTruncated := chatNotificationText(connection, session, firstChatNotificationString(root, "item.workspaceLabel", "workspaceLabel", "item.cwd", "cwd"), domain.MaxSourceLabelBytes)
+	_, _ = commandTruncated, labelTruncated
+	_, _ = s.store.AppendEvent(chatstate.EventInput{
+		RunScope: runScope,
+		Kind:     "command_started",
+		State:    string(state),
+		CommandStarted: &domain.CommandStartedEvent{
+			ItemID:         itemID,
+			CommandDisplay: command,
+			WorkspaceLabel: workspaceLabel,
+		},
+		SizeBytes: int64(len(itemID) + len(command) + len(workspaceLabel) + len(runScope.ChatID) + len(runScope.RunID)),
+	})
+}
+
+func (s *Service) appendCommandOutputDeltaEvent(connection AppServerClient, session Session, runScope chatstate.RunScope, state chatstate.RunState, root map[string]any) {
+	itemID := firstChatNotificationString(root, "itemId", "item_id", "item.id", "id")
+	if itemID == "" {
+		return
+	}
+	output, truncated := chatNotificationText(connection, session, firstChatNotificationString(root, "delta", "outputDelta", "item.delta"), domain.MaxOutboundCommandOutputDeltaBytes)
+	if output == "" {
+		return
+	}
+	_, _ = s.store.AppendEvent(chatstate.EventInput{
+		RunScope: runScope,
+		Kind:     "command_output_delta",
+		State:    string(state),
+		CommandOutputDelta: &domain.CommandOutputDeltaEvent{
+			ItemID:    itemID,
+			Stream:    domain.CommandOutputStreamCombined,
+			Delta:     output,
+			Truncated: truncated,
+		},
+		SizeBytes: int64(len(itemID) + len(output) + len(runScope.ChatID) + len(runScope.RunID)),
+	})
+}
+
+func (s *Service) appendGatewayWarningEvent(connection AppServerClient, session Session, runScope chatstate.RunScope, state chatstate.RunState, method string, root map[string]any) {
+	warning, ok := chatGatewayWarningFromNotification(method, root)
+	if !ok || warning.Message == "" {
+		return
+	}
+	message, messageTruncated := chatNotificationText(connection, session, warning.Message, domain.MaxOutboundErrorDisplayMessageBytes)
+	if message == "" {
+		return
+	}
+	warning.Message = message
+	if messageTruncated && warning.LimitReason == "" {
+		warning.LimitReason = "message_truncated"
+	}
+	_, _ = s.store.AppendEvent(chatstate.EventInput{
+		RunScope:       runScope,
+		Kind:           "gateway_warning",
+		State:          string(state),
+		GatewayWarning: &warning,
+		SizeBytes:      int64(len(warning.Code) + len(warning.Message) + len(warning.RequestType) + len(runScope.ChatID) + len(runScope.RunID)),
+	})
+}
+
 func (s *Service) appendTurnCompletedEvent(runScope chatstate.RunScope, root map[string]any) {
 	state, ok := chatNotificationTerminalState(root)
 	if !ok {
@@ -143,6 +227,42 @@ func (s *Service) appendTurnCompletedEvent(runScope chatstate.RunScope, root map
 		SizeBytes: int64(len(runScope.ChatID) + len(runScope.RunID) + len(terminal.DisplayMessage) + len(lifecycle)),
 	})
 	_, _ = s.store.CompleteRun(runScope, state)
+}
+
+func chatGatewayWarningFromNotification(method string, root map[string]any) (domain.GatewayWarningEvent, bool) {
+	warning := domain.GatewayWarningEvent{
+		RequestType: method,
+	}
+	switch method {
+	case "warning":
+		warning.Code = chatGatewayWarningCodeAppServerWarning
+		warning.Message = firstNonEmptyChatString(root, "app-server warning", "message", "warning.message")
+	case "guardianWarning":
+		warning.Code = chatGatewayWarningCodeGuardianWarning
+		warning.Message = firstNonEmptyChatString(root, "guardian warning", "message", "warning.message")
+	case "configWarning":
+		warning.Code = chatGatewayWarningCodeConfigWarning
+		warning.Message = firstNonEmptyChatString(root, "configuration warning", "summary", "message", "details")
+	case "model/rerouted":
+		warning.Code = chatGatewayWarningCodeModelRerouted
+		warning.Message = firstNonEmptyChatString(root, "model request was rerouted", "message", "summary")
+		warning.AutoResolution = "continue"
+		warning.LimitReason = firstChatNotificationString(root, "reason")
+	case "model/verification":
+		warning.Code = chatGatewayWarningCodeModelVerification
+		warning.Message = firstNonEmptyChatString(root, "model verification update", "message", "summary", "status")
+		warning.AutoResolution = "continue"
+	default:
+		return domain.GatewayWarningEvent{}, false
+	}
+	return warning, true
+}
+
+func firstNonEmptyChatString(root map[string]any, fallback string, paths ...string) string {
+	if value := firstChatNotificationString(root, paths...); value != "" {
+		return value
+	}
+	return fallback
 }
 
 func chatNotificationTerminalState(root map[string]any) (chatstate.RunState, bool) {

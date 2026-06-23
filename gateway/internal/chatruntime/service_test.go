@@ -1358,6 +1358,96 @@ func TestChatNotificationBridgeStreamsAssistantAndTerminalEvents(t *testing.T) {
 	}
 }
 
+func TestChatNotificationBridgeStreamsCommandAndRunOwnedWarningEvents(t *testing.T) {
+	notifications := make(chan appserver.Notification, 8)
+	client := &fakeAppServerClient{
+		notifications: notifications,
+		threadResults: []json.RawMessage{json.RawMessage(`{"thread":{"id":"thread-1"}}`)},
+		turnResults:   []json.RawMessage{json.RawMessage(`{"turn":{"id":"turn-1"}}`)},
+	}
+	store := chatstate.NewStore(chatstate.StoreOptions{Epoch: "epoch-1"})
+	service := newTestServiceWithStore(t, &fakeConnectionProvider{client: client}, store)
+
+	response, err := service.StartChatRun(context.Background(), testStartChatRunCommand("idem-1"))
+	if err != nil {
+		t.Fatalf("StartChatRun() error = %v", err)
+	}
+	stream, err := service.StreamChatEvents(context.Background(), domain.StreamChatEventsCommand{
+		SessionGroupID:     "sg-1",
+		WorkspaceID:        "ws-1",
+		ChatID:             response.ChatID,
+		CursorKind:         domain.StreamCursorAfterEventID,
+		AfterEventCursor:   response.EventCursor,
+		ClientSubscriberID: "subscriber-1",
+	})
+	if err != nil {
+		t.Fatalf("StreamChatEvents() error = %v", err)
+	}
+	defer func() {
+		_ = stream.Close()
+	}()
+	next := func() grpcapi.StreamChatEventsMessage {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		message, err := stream.Next(ctx)
+		if err != nil {
+			t.Fatalf("StreamChatEvents().Next() error = %v", err)
+		}
+		return message
+	}
+
+	notifications <- appserver.Notification{
+		Method: "item/started",
+		Params: json.RawMessage(`{
+			"threadId":"thread-1",
+			"turnId":"turn-1",
+			"item":{
+				"type":"commandExecution",
+				"id":"cmd-1",
+				"command":"go test ./...",
+				"cwd":"D:/ai-apps/codex-runtime",
+				"status":"inProgress",
+				"commandActions":[],
+				"aggregatedOutput":null,
+				"exitCode":null,
+				"durationMs":null
+			}
+		}`),
+	}
+	started := next()
+	if started.Event == nil || started.Event.CommandStarted == nil {
+		t.Fatalf("started event = %#v, want command started", started.Event)
+	}
+	if started.Event.CommandStarted.ItemID != "cmd-1" || started.Event.CommandStarted.CommandDisplay != "go test ./..." {
+		t.Fatalf("command started payload = %#v", started.Event.CommandStarted)
+	}
+
+	notifications <- appserver.Notification{
+		Method: "item/commandExecution/outputDelta",
+		Params: json.RawMessage(`{"threadId":"thread-1","turnId":"turn-1","itemId":"cmd-1","delta":"ok\n"}`),
+	}
+	output := next()
+	if output.Event == nil || output.Event.CommandOutputDelta == nil {
+		t.Fatalf("output event = %#v, want command output delta", output.Event)
+	}
+	if output.Event.CommandOutputDelta.ItemID != "cmd-1" || output.Event.CommandOutputDelta.Delta != "ok\n" || output.Event.CommandOutputDelta.Stream != domain.CommandOutputStreamCombined {
+		t.Fatalf("command output payload = %#v", output.Event.CommandOutputDelta)
+	}
+
+	notifications <- appserver.Notification{
+		Method: "model/rerouted",
+		Params: json.RawMessage(`{"threadId":"thread-1","turnId":"turn-1","fromModel":"old","toModel":"new","reason":"policy"}`),
+	}
+	warning := next()
+	if warning.Event == nil || warning.Event.GatewayWarning == nil {
+		t.Fatalf("warning event = %#v, want gateway warning", warning.Event)
+	}
+	if warning.Event.GatewayWarning.Code != "model_rerouted" || warning.Event.GatewayWarning.Message == "" {
+		t.Fatalf("gateway warning payload = %#v", warning.Event.GatewayWarning)
+	}
+}
+
 func TestStreamChatEventsRejectsEventCursorForAnotherChat(t *testing.T) {
 	store := chatstate.NewStore(chatstate.StoreOptions{Epoch: "epoch-1"})
 	cursor := eventCursor("epoch-1", "thread-1", "turn-1", 1)

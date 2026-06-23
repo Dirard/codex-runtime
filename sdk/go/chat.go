@@ -223,6 +223,7 @@ func (c *Client) Run(ctx context.Context, prompt string, opts ...RequestOption) 
 	if err != nil {
 		return chat, nil, err
 	}
+	markInitialFriendlyCursor(response.GetEventCursor(), events, chat.ID, response.GetRunId(), applied.initialStreamOptions)
 	return chat, events, nil
 }
 

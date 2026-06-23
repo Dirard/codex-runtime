@@ -190,6 +190,12 @@ func eventRecordMessage(command domain.StreamChatEventsCommand, record chatstate
 		event.PendingResolved = record.PendingResolved
 	case record.Terminal != nil:
 		event.Terminal = record.Terminal
+	case record.CommandStarted != nil:
+		event.CommandStarted = record.CommandStarted
+	case record.CommandOutputDelta != nil:
+		event.CommandOutputDelta = record.CommandOutputDelta
+	case record.GatewayWarning != nil:
+		event.GatewayWarning = record.GatewayWarning
 	default:
 		event.StatusUpdated = &status
 	}
